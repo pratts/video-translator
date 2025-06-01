@@ -1,32 +1,42 @@
-import srt
-import os
 from bark import SAMPLE_RATE, generate_audio
 from scipy.io.wavfile import write as write_wav
+import srt
+import numpy as np
+import os
 os.environ['TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD'] = '1'
 
 def convert_srt_to_audio(srt_path: str, output_path: str):
     with open(srt_path, "r", encoding="utf-8") as f:
         subtitles = list(srt.parse(f.read()))
 
-    audio_segments = []
-
-    print(f"Generating audio for {len(subtitles)} segments...")
+    full_audio = []
 
     for i, sub in enumerate(subtitles):
-        print(f"Processing segment {i+1}/{len(subtitles)}...")
-        audio_array = generate_audio(sub.content)
-        audio_segments.append((sub.start.total_seconds(), audio_array))
+        print(f"Processing subtitle {i+1}/{len(subtitles)}: {sub.content}")
 
-    # Combine into a full audio stream (simple naive concatenation)
-    full_audio = b''.join(audio[1].tobytes() for audio in audio_segments)
+        try:
+            audio_array = generate_audio(sub.content)
 
-    # Save to WAV
-    with open(output_path, "wb") as f:
-        f.write(full_audio)
+            if len(audio_array) == 0:
+                print(f"⚠️ Warning: Empty audio for subtitle {i+1}")
+                continue
 
-    print(f"Audio saved to {output_path}")
+            full_audio.append(audio_array)
+        except Exception as e:
+            print(f"❌ Error processing subtitle {i+1}: {e}")
+            continue
+
+    if not full_audio:
+        print("❌ No audio segments generated. Exiting.")
+        return
+
+    combined_audio = np.concatenate(full_audio)
+    write_wav(output_path, SAMPLE_RATE, combined_audio)
+
+    print(f"✅ Audio saved to {output_path}, length: {len(combined_audio)/SAMPLE_RATE:.2f} sec")
+
 
 if __name__ == "__main__":
     srt_file = "./data/translated_polished.srt"
-    output_wav = "audio-output.wav"
+    output_wav = "audio-output_prev.wav"
     convert_srt_to_audio(srt_file, output_wav)
