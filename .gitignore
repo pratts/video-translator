@@ -195,3 +195,5 @@ cython_debug/
 .env
 project-*.json
 data/*
+.idea/*
+*/__pycache__/*
