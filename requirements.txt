@@ -1,15 +1,12 @@
 # Requirements for video-project
 # For getting native language subtitles from videos
-git+https://github.com/openai/whisper.git
+openai-whisper
 
 # For translating subtitles
 deep-translator
 openai
 srt
-# google-cloud-translate
 google-cloud-translate==2.0.1
-# argostranslate
-
 
 # Environment management
 python-dotenv
