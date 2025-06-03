@@ -31,6 +31,7 @@ def convert_srt_to_audio(srt_path: str, output_path: str):
         subtitles = list(srt.parse(file.read()))
 
     full_audio = AudioSegment.silent(duration=0)
+    prev_end_time = 0.0  # in seconds
 
     for i, sub in enumerate(subtitles):
         start_time = sub.start.total_seconds()
@@ -39,6 +40,11 @@ def convert_srt_to_audio(srt_path: str, output_path: str):
 
         print(f"\n🔊 Subtitle {i+1}: {sub.start} --> {sub.end} | \"{sub.content.strip()}\"")
         print(f"Expected duration: {duration_ms} ms")
+
+        gap_duration_ms = int((start_time - prev_end_time) * 1000)
+        if gap_duration_ms > 0:
+            print(f"⏸️ Padding silence of {gap_duration_ms} ms between subtitles {i} and {i+1}")
+            full_audio += AudioSegment.silent(duration=gap_duration_ms)
 
         # Generate audio using Bark
         audio = generate_audio(sub.content, history_prompt=voice_name)
@@ -58,6 +64,7 @@ def convert_srt_to_audio(srt_path: str, output_path: str):
 
         # Append to final audio
         full_audio += audio_segment
+        prev_end_time = end_time
 
     # Export final audio
     full_audio.export(output_path, format="wav")
