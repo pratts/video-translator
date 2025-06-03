@@ -1,6 +1,9 @@
 from google.cloud import translate_v2 as translate
 import srt, os
+from dotenv import load_dotenv
 
+load_dotenv()
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS");
 client = translate.Client()
 
 def translate(subtitles):

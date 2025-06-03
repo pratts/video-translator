@@ -1,30 +1,34 @@
-import argparse
 import srt
-from translators import gpt, deepl
-
-BACKENDS = {
-    "gpt": gpt.translate,
-    # "google": google_api.translate,
-    # "argos": argos.translate,
-    "deep": deepl.translate,
-}
+import argparse
+from translators import google, gpt
 
 def main():
-    parser = argparse.ArgumentParser(description="Translate subtitles using various backends.")
-    parser.add_argument("input", help="Input SRT file")
-    parser.add_argument("output", help="Output SRT file")
-    parser.add_argument("--backend", choices=BACKENDS.keys(), default="gpt", help="Translation backend")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", default="input.srt", help="Input SRT file")
+    parser.add_argument("--raw_output", default="translated_raw.srt")
+    parser.add_argument("--polished_output", default="translated_polished.srt")
     args = parser.parse_args()
 
+    print("📄 Reading input subtitles...")
     with open(args.input, "r", encoding="utf-8") as f:
         subtitles = list(srt.parse(f.read()))
 
-    translated = BACKENDS[args.backend](subtitles)
+    print("🔤 Translating with Google Translate...")
+    translated = google.translate(subtitles)
 
-    with open(args.output, "w", encoding="utf-8") as f:
+    print("💾 Saving raw translations...")
+    with open(args.raw_output, "w", encoding="utf-8") as f:
         f.write(srt.compose(translated))
 
-    print(f"✅ Done: {args.backend} -> {args.output}")
+    print("🧠 Polishing translations with GPT...")
+    polished = gpt.polish_subtitles(translated)
+
+    print("💾 Saving polished translations...")
+    with open(args.polished_output, "w", encoding="utf-8") as f:
+        f.write(srt.compose(polished))
+
+    print(f"✅ Finished! Output saved to {args.polished_output}")
 
 if __name__ == "__main__":
+    print("Starting translation process...")
     main()

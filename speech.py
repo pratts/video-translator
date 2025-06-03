@@ -1,22 +1,32 @@
-from bark import generate_audio
-from pydub import AudioSegment
 import srt
 import os
+from bark import SAMPLE_RATE, generate_audio
+from scipy.io.wavfile import write as write_wav
 os.environ['TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD'] = '1'
 
-final_audio = AudioSegment.silent(duration=0)
+def convert_srt_to_audio(srt_path: str, output_path: str):
+    with open(srt_path, "r", encoding="utf-8") as f:
+        subtitles = list(srt.parse(f.read()))
 
-with open("translated.srt", "r", encoding="utf-8") as f:
-    subs = list(srt.parse(f.read()))
+    audio_segments = []
 
-print(f"Total subtitles: {len(subs)}")
-for sub in subs:
-    duration = (sub.end - sub.start).total_seconds() * 1000
-    print(f"Generating: {sub.content}")
-    audio_array = generate_audio(sub.content, history_prompt="v2/en_speaker_1")
-    clip = AudioSegment(audio_array.tobytes(), frame_rate=24000, sample_width=2, channels=1)
+    print(f"Generating audio for {len(subtitles)} segments...")
 
-    final_audio += clip
-    # Add silence between segments if needed (calculate from subtitle gaps)
+    for i, sub in enumerate(subtitles):
+        print(f"Processing segment {i+1}/{len(subtitles)}...")
+        audio_array = generate_audio(sub.content)
+        audio_segments.append((sub.start.total_seconds(), audio_array))
 
-final_audio.export("final_audio.wav", format="wav")
+    # Combine into a full audio stream (simple naive concatenation)
+    full_audio = b''.join(audio[1].tobytes() for audio in audio_segments)
+
+    # Save to WAV
+    with open(output_path, "wb") as f:
+        f.write(full_audio)
+
+    print(f"Audio saved to {output_path}")
+
+if __name__ == "__main__":
+    srt_file = "./data/translated_polished.srt"
+    output_wav = "audio-output.wav"
+    convert_srt_to_audio(srt_file, output_wav)
