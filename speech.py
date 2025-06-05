@@ -1,73 +1,59 @@
-from bark import SAMPLE_RATE, generate_audio, preload_models
-import srt
-import os
-import numpy as np
 from pydub import AudioSegment
-from datetime import timedelta
-
+from pydub.effects import speedup, normalize, compress_dynamic_range
+import srt
+import numpy as np
+from bark import generate_audio, preload_models
+import os
 os.environ['TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD'] = '1'
-preload_models()
 
-voice_name = "en_speaker_6"
+preload_models()
 
 def bark_audio_to_segment(audio: np.ndarray) -> AudioSegment:
     audio = np.clip(audio, -1.0, 1.0)
     audio_int16 = (audio * 32767).astype(np.int16)
-    return AudioSegment(
-        audio_int16.tobytes(),
-        frame_rate=SAMPLE_RATE,
-        sample_width=2,
-        channels=1
-    )
+    return AudioSegment(audio_int16.tobytes(), frame_rate=24000, sample_width=2, channels=1)
 
-def change_speed(sound: AudioSegment, speed: float) -> AudioSegment:
-    """Change playback speed without affecting pitch."""
-    new_frame_rate = int(sound.frame_rate * speed)
-    sped_up = sound._spawn(sound.raw_data, overrides={'frame_rate': new_frame_rate})
-    return sped_up.set_frame_rate(sound.frame_rate)
+def convert_srt_to_audio_with_timeline(srt_path: str, output_path: str):
+    with open(srt_path, "r") as f:
+        subtitles = list(srt.parse(f.read()))
 
-def convert_srt_to_audio(srt_path: str, output_path: str):
-    with open(srt_path, "r") as file:
-        subtitles = list(srt.parse(file.read()))
+    # Total duration of video based on last subtitle end time + some padding
+    total_duration_ms = int((subtitles[-1].end.total_seconds() + 1) * 1000)
 
-    full_audio = AudioSegment.silent(duration=0)
+    timeline = AudioSegment.silent(duration=total_duration_ms)
 
-    for i, sub in enumerate(subtitles):
-        start_time = sub.start.total_seconds()
-        end_time = sub.end.total_seconds()
-        duration_ms = int((end_time - start_time) * 1000)
+    for sub in subtitles:
+        start_ms = int(sub.start.total_seconds() * 1000)
+        end_ms = int(sub.end.total_seconds() * 1000)
+        duration_ms = end_ms - start_ms
 
-        print(f"\n🔊 Subtitle {i+1}: {sub.start} --> {sub.end} | \"{sub.content.strip()}\"")
-        print(f"Expected duration: {duration_ms} ms")
+        print(f"Processing subtitle from {start_ms}ms to {end_ms}ms, duration {duration_ms}ms")
 
-        audio = generate_audio(sub.content, history_prompt=voice_name)
+        # Generate audio with Bark
+        audio = generate_audio(sub.content, history_prompt="en_speaker_6")
         audio_segment = bark_audio_to_segment(audio)
 
-        original_length = len(audio_segment)
+        # If audio is longer than subtitle duration, speed it up to fit
+        if len(audio_segment) > duration_ms:
+            speed_factor = len(audio_segment) / duration_ms
+            audio_segment = speedup(audio_segment, playback_speed=speed_factor)
+            audio_segment = audio_segment[:duration_ms]  # trim any tiny excess
+        else:
+            # If shorter, pad with silence
+            silence_pad = AudioSegment.silent(duration=duration_ms - len(audio_segment))
+            audio_segment = audio_segment + silence_pad
 
-        print("Original length: ", original_length, " ms, Duration: ", duration_ms, " ms", " start: ", start_time, " end: ", end_time)
-        # Match audio to subtitle duration
-        if original_length < duration_ms:
-            print("📭 Padding with silence")
-            silence = AudioSegment.silent(duration=duration_ms - original_length)
-            audio_segment = audio_segment.fade_out(50) + silence.fade_in(50)
-        elif original_length > duration_ms:
-            speed = duration_ms / original_length
-            print("speed: ", speed)
-            if 0.9 <= speed <= 1.1:
-                print(f"⚡ Speeding up to fit: {speed:.2f}x")
-                audio_segment = change_speed(audio_segment, speed)
-            else:
-                print("⛔ Audio too long to safely speed up, trimming")
-                # audio_segment = audio_segment[:duration_ms]
+        # Normalize and compress volume
+        audio_segment = compress_dynamic_range(audio_segment)
+        audio_segment = normalize(audio_segment)
 
-        audio_segment = audio_segment.normalize()
-        full_audio += audio_segment
+        # Overlay audio_segment at correct start time on timeline
+        timeline = timeline.overlay(audio_segment, position=start_ms)
 
-    full_audio.export(output_path, format="wav")
-    print(f"\n✅ Exported final audio to {output_path}")
+    timeline.export(output_path, format="wav")
+    print(f"Exported final audio with timeline to {output_path}")
 
 if __name__ == "__main__":
     srt_file = "./data/t_polished.srt"
-    output_wav = "audio-output.wav"
-    convert_srt_to_audio(srt_file, output_wav)
+    output_wav = "./data/audio-output.wav"
+    convert_srt_to_audio_with_timeline(srt_file, output_wav)
