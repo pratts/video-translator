@@ -1,6 +1,7 @@
 # Requirements for video-project
 # For getting native language subtitles from videos
 openai-whisper
+faster-whisper
 
 # For translating subtitles
 deep-translator
@@ -20,3 +21,8 @@ torchvision
 torchaudio
 numpy
 scipy
+
+# Fetching music from video
+# spleeter
+demucs
+soundfile

@@ -52,8 +52,3 @@ def convert_srt_to_audio_with_timeline(srt_path: str, output_path: str):
 
     timeline.export(output_path, format="wav")
     print(f"Exported final audio with timeline to {output_path}")
-
-if __name__ == "__main__":
-    srt_file = "./data/t_polished.srt"
-    output_wav = "./data/audio-output.wav"
-    convert_srt_to_audio_with_timeline(srt_file, output_wav)
