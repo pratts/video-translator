@@ -27,11 +27,11 @@ def convert_srt_to_audio_with_timeline(srt_path: str, output_path: str):
         end_ms = int(sub.end.total_seconds() * 1000)
         duration_ms = end_ms - start_ms
 
-        print(f"Processing subtitle from {start_ms}ms to {end_ms}ms, duration {duration_ms}ms")
-
         # Generate audio with Bark
         audio = generate_audio(sub.content, history_prompt="en_speaker_6")
         audio_segment = bark_audio_to_segment(audio)
+
+        print(f"Processing subtitle from {start_ms}ms to {end_ms}ms, duration {duration_ms} ms, length of audio segment: {len(audio_segment)} ms")
 
         # If audio is longer than subtitle duration, speed it up to fit
         if len(audio_segment) > duration_ms:
