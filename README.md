@@ -22,6 +22,14 @@ git clone git@github.com:pratts/video-translator.git
 cd video-translator
 ```
 
+3. Create a `data` directory to store the source video and output files:
+```bash
+mkdir data
+```
+
+4. Place your source video file in the `data` directory.
+5. Update the source video, temporary file paths and output files in the `convert.py` script as needed.
+
 ### Follow the steps below to set up the project environment and run the translation service. ###
 1. Setup a virtual environment:
 ```bash
