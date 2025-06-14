@@ -26,3 +26,6 @@ scipy
 # spleeter
 demucs
 soundfile
+
+# Cloning audio
+pyrubberband

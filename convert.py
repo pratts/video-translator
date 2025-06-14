@@ -1,6 +1,7 @@
-from transcribe import extract_audio, transcribe_to_srt
-from translate import translate_subtitles
+# from transcribe import extract_audio, transcribe_to_srt
+# from translate import translate_subtitles
 from speech import convert_srt_to_audio_with_timeline
+from speech_clone import clone_speech_with_subtitles
 class Converter:
     def __init__(self):
         self.source_video_file = './data/source-video.mp4'
@@ -8,7 +9,8 @@ class Converter:
         self.subtitle_file = './data/subtitles.srt'
         self.raw_subtitle_file = './data/translated_raw.srt'
         self.polished_subtitle_file = './data/translated_polished.srt'
-        self.output_audio_file = './data/audio-output.wav'
+        self.output_audio_file = './data/audio-output2.wav'
+        self.htdemucs = './data/htdemucs'
 
     def clear_files(self):
         import os
@@ -17,7 +19,8 @@ class Converter:
             self.subtitle_file,
             self.raw_subtitle_file,
             self.polished_subtitle_file,
-            self.output_audio_file
+            self.output_audio_file,
+            self.htdemucs
         ]
         for file in files_to_clear:
             if os.path.exists(file):
@@ -38,7 +41,9 @@ class Converter:
         translate_subtitles(self.subtitle_file, self.raw_subtitle_file, self.polished_subtitle_file)
 
         # print("Step 4: Converting polished subtitles to audio with timeline...")
-        convert_srt_to_audio_with_timeline(self.polished_subtitle_file, self.output_audio_file)
+        # convert_srt_to_audio_with_timeline(self.polished_subtitle_file, self.output_audio_file)
+        clone_speech_with_subtitles(self.extracted_audio_file, self.polished_subtitle_file, self.output_audio_file)
+        print("Step 5: Cloning speech with subtitles...")
 
         # self.clear_files()
         

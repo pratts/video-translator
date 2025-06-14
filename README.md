@@ -33,3 +33,6 @@ python convert.py
 ```bash
 ffmpeg -i ./data/source-video.mp4 -i ./data/audio-output.wav -c:v copy -map 0:v:0 -map 1:a:0 -shortest ./data/output-dubbed.mp4
 ```
+
+
+brew install rubberband 
