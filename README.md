@@ -46,6 +46,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="{folder path}/key.json"
 6. Extrac background audio from the video:
 ```bash
 python3 -m demucs --two-stems=vocals -o ./data ./data/source-video.mp4
+```
 
 7. Run the convert script to get the translated audio:
 ```bash
