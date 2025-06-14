@@ -41,16 +41,18 @@ pip install -r requirements.txt
 export GOOGLE_APPLICATION_CREDENTIALS="{folder path}/key.json"
 ```
 
-5. Extrac background audio from the video:
+5. Rename the `.env.example` file to `.env` and set the `CHATGPT_API_KEY` variable with your ChatGPT API key:
+
+6. Extrac background audio from the video:
 ```bash
 python3 -m demucs --two-stems=vocals -o ./data ./data/source-video.mp4
 
-6. Run the convert script to get the translated audio:
+7. Run the convert script to get the translated audio:
 ```bash
 python convert.py
 ```
 
-7. Merge the translated audio with the original video:
+8. Merge the translated audio with the original video:
 ```bash
 ffmpeg -i ./data/source-video.mp4 -i ./data/merged_audio.wav -c:v copy -map 0:v:0 -map 1:a:0 -shortest ./data/output-video.mp4
 ```
