@@ -8,6 +8,7 @@ Steps to setup and run the project:
 - Python 3.12 or higher
 - ffmpeg
 - Google Cloud account with the Translation API enabled
+- ChatGPT API key
 - `rubberband` and `mecab` installed (for audio processing)
 
 ### Installation Instructions: ###
