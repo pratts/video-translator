@@ -22,10 +22,7 @@ git clone git@github.com:pratts/video-translator.git
 cd video-translator
 ```
 
-### Setup Instructions: ###
-# Video Translator Setup Instructions
-# This project uses a virtual environment to manage dependencies and requires specific packages to be installed.
-# Follow the steps below to set up the project environment and run the translation service.
+### Follow the steps below to set up the project environment and run the translation service. ###
 1. Setup a virtual environment:
 ```bash
 python3 -m venv venv
