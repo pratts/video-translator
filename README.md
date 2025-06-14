@@ -31,7 +31,7 @@ python convert.py
 
 8. Merge the translated audio with the original video:
 ```bash
-ffmpeg -i ./data/source-video.mp4 -i ./data/audio-output.wav -c:v copy -map 0:v:0 -map 1:a:0 -shortest ./data/output-dubbed.mp4
+ffmpeg -i ./data/source-video.mp4 -i ./data/merged_audio.wav -c:v copy -map 0:v:0 -map 1:a:0 -shortest ./data/output-video.mp4
 ```
 
 

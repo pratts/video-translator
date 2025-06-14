@@ -1,7 +1,9 @@
-# from transcribe import extract_audio, transcribe_to_srt
-# from translate import translate_subtitles
-from speech import convert_srt_to_audio_with_timeline
+from transcribe import extract_audio, transcribe_to_srt
+from translate import translate_subtitles
+# from speech import convert_srt_to_audio_with_timeline
 from speech_clone import clone_speech_with_subtitles
+from merge_audio import merge_voice_with_bgm
+
 class Converter:
     def __init__(self):
         self.source_video_file = './data/source-video.mp4'
@@ -9,7 +11,9 @@ class Converter:
         self.subtitle_file = './data/subtitles.srt'
         self.raw_subtitle_file = './data/translated_raw.srt'
         self.polished_subtitle_file = './data/translated_polished.srt'
-        self.output_audio_file = './data/audio-output2.wav'
+        self.output_audio_file = './data/audio-output.wav'
+        self.bgm_file = './data/htdemucs/source-video/no_vocals.wav'
+        self.merged_audio_file = './data/merged_audio.wav'
         self.htdemucs = './data/htdemucs'
 
     def clear_files(self):
@@ -37,16 +41,20 @@ class Converter:
         print("Step 2: Transcribing audio to SRT...")
         transcribe_to_srt(self.extracted_audio_file, self.subtitle_file, model_size="turbo")
 
-        # print("Step 3: Translating subtitles...")
+        print("Step 3: Translating subtitles...")
         translate_subtitles(self.subtitle_file, self.raw_subtitle_file, self.polished_subtitle_file)
 
         # print("Step 4: Converting polished subtitles to audio with timeline...")
         # convert_srt_to_audio_with_timeline(self.polished_subtitle_file, self.output_audio_file)
+        print("Step 4: Cloning speech with subtitles...")
         clone_speech_with_subtitles(self.extracted_audio_file, self.polished_subtitle_file, self.output_audio_file)
-        print("Step 5: Cloning speech with subtitles...")
 
-        # self.clear_files()
-        
+        print("Step 5: Merging cloned audio with background music...")
+        merge_voice_with_bgm(self.output_audio_file, self.bgm_file, self.merged_audio_file)
+
+        print("Step 6: Cleaning up temporary files...")
+        self.clear_files()
+
         print("Conversion process completed successfully!")
 
 if __name__ == "__main__":
