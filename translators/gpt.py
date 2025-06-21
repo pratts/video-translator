@@ -9,7 +9,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 client = openai.OpenAI()
 
-def polish_subtitles(subtitles, batch_size=10):
+def translate(subtitles, batch_size=10):
     polished = []
 
     for i in range(0, len(subtitles), batch_size):
