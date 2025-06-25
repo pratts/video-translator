@@ -67,7 +67,16 @@ python3 -m demucs --two-stems=vocals -o ./data ./input/source-video.mp4
 python convert.py
 ```
 
-7. Merge the translated audio with the original video:
+8. Clone and update the paths in OpenVoice repository at https://github.com/pratts/OpenVoice.
+   - Follow the instructions in the repository.
+   - Run the script `python openvoice_clone.py` to generate cloned audio segments.
+
+9. In the file `merge_cloned_audio.py`, update the paths of the input data and OpenVoice output path and run the script:
+```bash
+python merge_cloned_audio.py
+```
+
+9. Merge the translated audio with the original video:
 ```bash
 ffmpeg -i ./input/source-video.mp4 -i ./data/merged_audio.wav -c:v copy -map 0:v:0 -map 1:a:0 -shortest ./output/output-video.mp4
 ```
