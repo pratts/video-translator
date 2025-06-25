@@ -1,7 +1,7 @@
 import os
 import shutil
 from utils.transcribe import extract_audio, transcribe_to_srt
-from utils.translate import translate_subtitles
+from utils.translate import translate_subtitles, merge_srt_blocks
 from utils.audio_segment_generator import generate_audio_segments
 
 class Converter:
@@ -19,9 +19,10 @@ class Converter:
         self.bgm_file = self.get_path('data/htdemucs/source-video/no_vocals.wav')
         self.merged_audio_file = self.get_path('data/merged_audio.wav')
         self.vocal_audio_file = self.get_path('data/htdemucs/source-video/vocals.wav')
-        self.open_voice_path = self.get_path('data/processed')
+        self.merged_subtitle_file = self.get_path('data/merged_subtitles.srt')
 
         # Paths for directories
+        self.open_voice_path = self.get_path('data/processed')
         self.audio_segment_dir = self.get_path('data/segments')
         self.htdemucs_dir = self.get_path('data/htdemucs')
         self.output_dir = self.get_path('output')
@@ -73,6 +74,8 @@ class Converter:
         print("Step 4: Generating audio segments from vocals...")
         generate_audio_segments(self.polished_subtitle_file, self.vocal_audio_file, self.audio_segment_dir)
 
+        print("Step 5: Merging subtitles...")
+        merge_srt_blocks(self.polished_subtitle_file, self.merged_subtitle_file)
         # print("Step 6: Cleaning up temporary files...")
         # self.clear_files()
 

@@ -31,3 +31,32 @@ def translate_subtitles(subtitles_path: str, raw_output_path: str, polished_outp
         f.write(srt.compose(translated_subtitles))
 
     print(f"✅ Finished! Output saved to {polished_output_path}")
+
+def merge_srt_blocks(polished_srt_path: str, output_merged_path: str):
+    with open(polished_srt_path, "r", encoding="utf-8") as f:
+        subtitles = list(srt.parse(f.read()))
+
+    merged_subs = []
+    i = 0
+    while i < len(subtitles):
+        current = subtitles[i]
+        merged_content = [current.content]
+        start_time = current.start
+        end_time = current.end
+
+        # Merge while end == next.start
+        while i + 1 < len(subtitles) and end_time == subtitles[i + 1].start:
+            i += 1
+            next_sub = subtitles[i]
+            merged_content.append(next_sub.content)
+            end_time = next_sub.end
+
+        merged_sub = srt.Subtitle(index=len(merged_subs) + 1,
+                                  start=start_time,
+                                  end=end_time,
+                                  content=". ".join(merged_content))
+        merged_subs.append(merged_sub)
+        i += 1
+
+    with open(output_merged_path, "w", encoding="utf-8") as f:
+        f.write(srt.compose(merged_subs))
