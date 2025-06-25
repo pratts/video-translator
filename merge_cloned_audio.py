@@ -1,7 +1,6 @@
 from pydub import AudioSegment
 import srt
 import os
-from merge_audio import merge_voice_with_bgm
 
 def merge_openvoice_speech_with_subtitles(srt_path: str, open_voice_path: str, output_path: str):
     with open(srt_path, "r", encoding="utf-8") as f:
@@ -42,8 +41,20 @@ def clear_files(files):
         else:
             print(f"File not found, skipping: {file}")
 
+def merge_voice_with_bgm(source_audio_path, bgm_path, output_path):
+    # Load the source audio and background music
+    source_audio = AudioSegment.from_wav(source_audio_path)
+    bgm = AudioSegment.from_wav(bgm_path)
+
+    # Match background music duration if needed
+    bgm = bgm[:len(source_audio)] if len(bgm) > len(source_audio) else bgm + AudioSegment.silent(duration=len(source_audio)-len(bgm))
+
+    # Mix with proper gain to avoid overpowering
+    mixed = source_audio.overlay(bgm - 6)
+    mixed.export(output_path, format="wav")
+
 if __name__ == "__main__":
-    open_voice_path = "/Users/prateek/work/oss/OpenVoice/processed"
+    open_voice_path = "./data/processed"
     polished_subtitle_file = './data/translated_polished.srt'
     output_audio_file = "./data/merged_openvoice_audio.wav"
     bgm_file = './data/htdemucs/source-video/no_vocals.wav'

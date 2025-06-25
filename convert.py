@@ -1,11 +1,12 @@
+import os
+import shutil
 from transcribe import extract_audio, transcribe_to_srt
 from translate import translate_subtitles
-from speech_clone import clone_speech_with_subtitles
-from merge_audio import merge_voice_with_bgm
+from audio_segment_generator import generate_audio_segments
 
 class Converter:
     def __init__(self):
-        self.source_video_file = './data/source-video.mp4'
+        self.source_video_file = './input/source-video.mp4'
         self.extracted_audio_file = './data/source-audio.wav'
         self.subtitle_file = './data/subtitles.srt'
         self.raw_subtitle_file = './data/translated_raw.srt'
@@ -13,7 +14,13 @@ class Converter:
         self.output_audio_file = './data/audio-output.wav'
         self.bgm_file = './data/htdemucs/source-video/no_vocals.wav'
         self.merged_audio_file = './data/merged_audio.wav'
-        self.htdemucs = './data/htdemucs'
+        self.vocal_audio_file = './data/htdemucs/source-video/vocals.wav'
+        self.open_voice_path = './data/processed'
+
+        # Paths for directories
+        self.audio_segment_dir = './data/segments'
+        self.htdemucs_dir = './data/htdemucs'
+        self.output_dir = './output'
 
     def clear_files(self):
         import os
@@ -23,17 +30,33 @@ class Converter:
             self.raw_subtitle_file,
             self.polished_subtitle_file,
             self.output_audio_file,
-            self.htdemucs
+            self.htdemucs_dir,
+            self.merged_audio_file,
+            self.audio_segment_dir,
+            self.open_voice_path,
+            self.output_audio_file
         ]
         for file in files_to_clear:
             if os.path.exists(file):
-                os.remove(file)
+                if os.path.isdir(file):
+                    shutil.rmtree(file)
+                else:
+                    os.remove(file)
                 print(f"Cleared file: {file}")
             else:
                 print(f"File not found, skipping: {file}")
 
+    def create_directories(self):
+        os.makedirs('./data', exist_ok=True)
+        os.makedirs('./input', exist_ok=True)
+        os.makedirs('./output', exist_ok=True)
+    
     def convert(self):
         print("Starting conversion process...")
+
+        print("Step 0: Clearing temporary files...")
+        self.create_directories()
+
         print("Step 1: Extracting audio from video...")
         extract_audio(self.source_video_file, self.extracted_audio_file)
 
@@ -43,16 +66,11 @@ class Converter:
         print("Step 3: Translating subtitles...")
         translate_subtitles(self.subtitle_file, self.raw_subtitle_file, self.polished_subtitle_file)
 
-        # print("Step 4: Converting polished subtitles to audio with timeline...")
-        # convert_srt_to_audio_with_timeline(self.polished_subtitle_file, self.output_audio_file)
-        print("Step 4: Cloning speech with subtitles...")
-        clone_speech_with_subtitles(self.extracted_audio_file, self.polished_subtitle_file, self.output_audio_file)
+        print("Step 4: Generating audio segments from vocals...")
+        generate_audio_segments(self.polished_subtitle_file, self.vocal_audio_file, self.audio_segment_dir)
 
-        print("Step 5: Merging cloned audio with background music...")
-        merge_voice_with_bgm(self.output_audio_file, self.bgm_file, self.merged_audio_file)
-
-        print("Step 6: Cleaning up temporary files...")
-        self.clear_files()
+        # print("Step 6: Cleaning up temporary files...")
+        # self.clear_files()
 
         print("Conversion process completed successfully!")
 
