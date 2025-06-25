@@ -54,7 +54,7 @@ def merge_srt_blocks(polished_srt_path: str, output_merged_path: str):
         merged_sub = srt.Subtitle(index=len(merged_subs) + 1,
                                   start=start_time,
                                   end=end_time,
-                                  content=". ".join(merged_content))
+                                  content="\n".join(merged_content))
         merged_subs.append(merged_sub)
         i += 1
 

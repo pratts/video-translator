@@ -74,8 +74,6 @@ class Converter:
         print("Step 4: Generating audio segments from vocals...")
         generate_audio_segments(self.polished_subtitle_file, self.vocal_audio_file, self.audio_segment_dir)
 
-        print("Step 5: Merging subtitles...")
-        merge_srt_blocks(self.polished_subtitle_file, self.merged_subtitle_file)
         # print("Step 6: Cleaning up temporary files...")
         # self.clear_files()
 
