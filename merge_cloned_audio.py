@@ -19,9 +19,12 @@ def merge_openvoice_speech_with_subtitles(srt_path: str, open_voice_path: str, o
         print(f"[🔊] Processing subtitle {i}: {sub.content} (start: {sub.start}, end: {sub.end}), path: {audio_path}")
         if not os.path.exists(audio_path):
             print(f"[⚠️] Missing audio for subtitle {i}: {audio_path}")
-            continue
+            audio_segment = AudioSegment.silent(duration=expected_duration)
+        else:
+            audio_segment = AudioSegment.from_wav(audio_path)
+            # continue
 
-        audio_segment = AudioSegment.from_wav(audio_path)
+        # audio_segment = AudioSegment.from_wav(audio_path)
 
         # Pad with silence if shorter than expected (helps with alignment)
         if len(audio_segment) < expected_duration:
