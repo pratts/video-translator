@@ -1,26 +1,30 @@
 import os
 import shutil
-from transcribe import extract_audio, transcribe_to_srt
-from translate import translate_subtitles
-from audio_segment_generator import generate_audio_segments
+from utils.transcribe import extract_audio, transcribe_to_srt
+from utils.translate import translate_subtitles
+from utils.audio_segment_generator import generate_audio_segments
 
 class Converter:
+    def get_path(self, filename):
+        """Get the absolute path of a file in the current directory."""
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+    
     def __init__(self):
-        self.source_video_file = './input/source-video.mp4'
-        self.extracted_audio_file = './data/source-audio.wav'
-        self.subtitle_file = './data/subtitles.srt'
-        self.raw_subtitle_file = './data/translated_raw.srt'
-        self.polished_subtitle_file = './data/translated_polished.srt'
-        self.output_audio_file = './data/audio-output.wav'
-        self.bgm_file = './data/htdemucs/source-video/no_vocals.wav'
-        self.merged_audio_file = './data/merged_audio.wav'
-        self.vocal_audio_file = './data/htdemucs/source-video/vocals.wav'
-        self.open_voice_path = './data/processed'
+        self.source_video_file = self.get_path('input/source-video.mp4')
+        self.extracted_audio_file = self.get_path('data/source-audio.wav')
+        self.subtitle_file = self.get_path('data/subtitles.srt')
+        self.raw_subtitle_file = self.get_path('data/translated_raw.srt')
+        self.polished_subtitle_file = self.get_path('data/translated_polished.srt')
+        self.output_audio_file = self.get_path('data/audio-output.wav')
+        self.bgm_file = self.get_path('data/htdemucs/source-video/no_vocals.wav')
+        self.merged_audio_file = self.get_path('data/merged_audio.wav')
+        self.vocal_audio_file = self.get_path('data/htdemucs/source-video/vocals.wav')
+        self.open_voice_path = self.get_path('data/processed')
 
         # Paths for directories
-        self.audio_segment_dir = './data/segments'
-        self.htdemucs_dir = './data/htdemucs'
-        self.output_dir = './output'
+        self.audio_segment_dir = self.get_path('data/segments')
+        self.htdemucs_dir = self.get_path('data/htdemucs')
+        self.output_dir = self.get_path('output')
 
     def clear_files(self):
         import os
