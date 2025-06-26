@@ -1,7 +1,7 @@
 import os
 import shutil
 from utils.transcribe import extract_audio, transcribe_to_srt
-from utils.translate import translate_subtitles, merge_srt_blocks
+from utils.translate import translate_subtitles
 from utils.audio_segment_generator import generate_audio_segments
 
 class Converter:
