@@ -6,10 +6,10 @@ Note: This project is in its early stages and is not yet functional. It is inten
 Steps to setup and run the project:
 ### Prerequisites: ###
 - Python 3.12 or higher
-- ffmpeg
+- ffmpeg and ffprobe on your `PATH` (used for audio extraction and reading video metadata)
 - Google Cloud account with the Translation API enabled if using Google Translation
 - ChatGPT API key (if using ChatGPT for translation)
-- `demucs` installed (for audio extraction)
+- [Demucs](https://github.com/adefossez/demucs) >= 4.1.0 (installed through `requirements.txt`; used to separate vocals from background audio)
 - `rubberband` and `mecab` installed (for audio processing)
 
 ### Installation Instructions: ###
@@ -47,31 +47,31 @@ python clear_files.py
 TRANSLATOR = google/gpt based on your preference
 CHATGPT_API_KEY = your_chatgpt_api_key
 GOOGLE_APPLICATION_CREDENTIALS = {folder path}/key.json
+DEMUCS_MODEL = htdemucs_ft
+DEMUCS_DEVICE =
 ```
 - `TRANSLATOR` can be set to either `google` or `gpt`:
    - If you choose `google`, the script will use the Google Translation API. Set the `GOOGLE_APPLICATION_CREDENTIALS` variable to the path of your Google application credentials JSON file.
    - If you choose `gpt`, it will use the ChatGPT API for translation. Set the `CHATGPT_API_KEY` variable with your ChatGPT API key.
+- `DEMUCS_MODEL` is the Demucs model used for vocal separation. `htdemucs_ft` gives the best quality; `htdemucs` is about 4x faster.
+- `DEMUCS_DEVICE` can be `cuda`, `mps` or `cpu`. Leave it empty to use CUDA if available, otherwise CPU.
 
 5. Export the Google application credentials:
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="{folder path}/key.json"
 ```
 
-6. Extrac background audio from the video:
+6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, and separates vocals from background into `data/separation/` before transcribing:
 ```bash
-python3 -m demucs --two-stems=vocals -o ./data ./input/source-video.mp4
+python convert.py                      # uses input/source-video.mp4
+python convert.py path/to/my-video.mp4 # or any other video
 ```
 
-7. Run the convert script to get the translated audio:
-```bash
-python convert.py
-```
-
-8. Clone and update the paths in OpenVoice repository at https://github.com/pratts/OpenVoice.
+7. Clone and update the paths in OpenVoice repository at https://github.com/pratts/OpenVoice.
    - Follow the instructions in the repository.
    - Run the script `python openvoice_clone.py` to generate cloned audio segments.
 
-9. In the file `merge_cloned_audio.py`, update the paths of the input data and OpenVoice output path and run the script:
+8. In the file `merge_cloned_audio.py`, update the paths of the input data and OpenVoice output path and run the script:
 ```bash
 python merge_cloned_audio.py
 ```

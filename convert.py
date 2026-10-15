@@ -1,41 +1,53 @@
+import argparse
 import os
 import shutil
-from utils.transcribe import extract_audio, transcribe_to_srt
-from utils.translate import translate_subtitles
-from utils.audio_segment_generator import generate_audio_segments
+from dotenv import load_dotenv
+
+# Load .env before importing modules that read it at import time (e.g. translators/google.py)
+load_dotenv()
+
+from utils.media import extract_audio, probe_media
+from utils.separate import separate_vocals
+# from utils.transcribe import transcribe_to_srt
+# from utils.translate import translate_subtitles
+# from utils.audio_segment_generator import generate_audio_segments
 
 class Converter:
     def get_path(self, filename):
         """Get the absolute path of a file in the current directory."""
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
     
-    def __init__(self):
-        self.source_video_file = self.get_path('input/source-video.mp4')
+    def __init__(self, source_video_file: str):
+        self.source_video_file = os.path.abspath(source_video_file)
+        self.metadata_file = self.get_path('data/metadata.json')
         self.extracted_audio_file = self.get_path('data/source-audio.wav')
+        self.asr_audio_file = self.get_path('data/source-audio-16k.wav')
         self.subtitle_file = self.get_path('data/subtitles.srt')
         self.raw_subtitle_file = self.get_path('data/translated_raw.srt')
         self.polished_subtitle_file = self.get_path('data/translated_polished.srt')
         self.output_audio_file = self.get_path('data/audio-output.wav')
-        self.bgm_file = self.get_path('data/htdemucs/source-video/no_vocals.wav')
+        self.bgm_file = self.get_path('data/separation/background.wav')
         self.merged_audio_file = self.get_path('data/merged_audio.wav')
-        self.vocal_audio_file = self.get_path('data/htdemucs/source-video/vocals.wav')
+        self.vocal_audio_file = self.get_path('data/separation/vocals.wav')
         self.merged_subtitle_file = self.get_path('data/merged_subtitles.srt')
 
         # Paths for directories
         self.open_voice_path = self.get_path('data/processed')
         self.audio_segment_dir = self.get_path('data/segments')
-        self.htdemucs_dir = self.get_path('data/htdemucs')
+        self.separation_dir = self.get_path('data/separation')
         self.output_dir = self.get_path('output')
 
     def clear_files(self):
         import os
         files_to_clear = [
+            self.metadata_file,
             self.extracted_audio_file,
+            self.asr_audio_file,
             self.subtitle_file,
             self.raw_subtitle_file,
             self.polished_subtitle_file,
             self.output_audio_file,
-            self.htdemucs_dir,
+            self.separation_dir,
             self.merged_audio_file,
             self.audio_segment_dir,
             self.open_voice_path,
@@ -63,16 +75,23 @@ class Converter:
         self.create_directories()
 
         print("Step 1: Extracting audio from video...")
+        probe_media(self.source_video_file, self.metadata_file)
         extract_audio(self.source_video_file, self.extracted_audio_file)
+        extract_audio(self.source_video_file, self.asr_audio_file, sample_rate=16000, mono=True)
 
-        print("Step 2: Transcribing audio to SRT...")
-        transcribe_to_srt(self.extracted_audio_file, self.subtitle_file, model_size="turbo")
+        print("Step 1b: Separating vocals from background...")
+        separate_vocals(self.extracted_audio_file, self.vocal_audio_file, self.bgm_file,
+                        model=os.getenv("DEMUCS_MODEL", "htdemucs_ft"),
+                        device=os.getenv("DEMUCS_DEVICE") or None)
 
-        print("Step 3: Translating subtitles...")
-        translate_subtitles(self.subtitle_file, self.raw_subtitle_file, self.polished_subtitle_file)
+        # print("Step 2: Transcribing audio to SRT...")
+        # transcribe_to_srt(self.extracted_audio_file, self.subtitle_file, model_size="turbo")
 
-        print("Step 4: Generating audio segments from vocals...")
-        generate_audio_segments(self.polished_subtitle_file, self.vocal_audio_file, self.audio_segment_dir)
+        # print("Step 3: Translating subtitles...")
+        # translate_subtitles(self.subtitle_file, self.raw_subtitle_file, self.polished_subtitle_file)
+
+        # print("Step 4: Generating audio segments from vocals...")
+        # generate_audio_segments(self.polished_subtitle_file, self.vocal_audio_file, self.audio_segment_dir)
 
         # print("Step 6: Cleaning up temporary files...")
         # self.clear_files()
@@ -80,7 +99,11 @@ class Converter:
         print("Conversion process completed successfully!")
 
 if __name__ == "__main__":
-    converter = Converter()
+    parser = argparse.ArgumentParser(description="Translate and dub a video.")
+    parser.add_argument("input", nargs="?", default="input/source-video.mp4", help="Path to the source video")
+    args = parser.parse_args()
+
+    converter = Converter(args.input)
     converter.convert()
     print("All steps completed successfully!")
     print("You can now use the output audio file for your video.")

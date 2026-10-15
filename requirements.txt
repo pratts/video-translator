@@ -22,12 +22,9 @@ torchaudio
 numpy
 scipy
 
-# Fetching music from video
-# spleeter
-demucs
+# Separating vocals from background music (maintained fork: https://github.com/adefossez/demucs)
+demucs>=4.1.0
 soundfile
 
 # Cloning audio
 pyrubberband
-
-moviepy

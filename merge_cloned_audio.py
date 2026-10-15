@@ -60,7 +60,7 @@ if __name__ == "__main__":
     open_voice_path = "./data/processed"
     polished_subtitle_file = './data/translated_polished.srt'
     output_audio_file = "./data/merged_openvoice_audio.wav"
-    bgm_file = './data/htdemucs/source-video/no_vocals.wav'
+    bgm_file = './data/separation/background.wav'
     merged_audio_file = './data/merged_audio.wav'
     clear_files([output_audio_file, merged_audio_file])
 
