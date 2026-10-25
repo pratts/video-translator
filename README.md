@@ -9,6 +9,7 @@ Steps to setup and run the project:
 - ffmpeg and ffprobe on your `PATH` (used for audio extraction and reading video metadata)
 - Google Cloud account with the Translation API enabled if using Google Translation
 - ChatGPT API key (if using ChatGPT for translation)
+- Hugging Face account and access token, with the terms of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) accepted (for speaker diarization)
 - [Demucs](https://github.com/adefossez/demucs) >= 4.1.0 (installed through `requirements.txt`; used to separate vocals from background audio)
 - `rubberband` and `mecab` installed (for audio processing)
 
@@ -53,6 +54,11 @@ ASR_BACKEND = whisperx
 WHISPER_MODEL = large-v3-turbo
 SOURCE_LANGUAGE =
 ASR_DEVICE =
+HF_TOKEN = your_hugging_face_token
+NUM_SPEAKERS =
+MIN_SPEAKERS =
+MAX_SPEAKERS =
+DIARIZATION_DEVICE =
 ```
 - `TRANSLATOR` can be set to either `google` or `gpt`:
    - If you choose `google`, the script will use the Google Translation API. Set the `GOOGLE_APPLICATION_CREDENTIALS` variable to the path of your Google application credentials JSON file.
@@ -65,13 +71,16 @@ ASR_DEVICE =
 - `WHISPER_MODEL` is the Whisper model, e.g. `large-v3-turbo`, `large-v3`, `medium`.
 - `SOURCE_LANGUAGE` is the spoken language code (e.g. `ja`). Leave it empty to auto-detect.
 - `ASR_DEVICE` can be `cuda` or `cpu` (whisperx backend). Leave it empty to use CUDA if available, otherwise CPU.
+- `HF_TOKEN` is a [Hugging Face access token](https://huggingface.co/settings/tokens) used for speaker diarization. Accept the terms of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) with the same account first.
+- `NUM_SPEAKERS`, or `MIN_SPEAKERS` / `MAX_SPEAKERS`, can be set if you know how many people speak. Leave them empty to detect automatically.
+- `DIARIZATION_DEVICE` can be `cuda`, `mps` or `cpu`. Leave it empty to use CUDA, then the Apple GPU (`mps`), then CPU.
 
 5. Export the Google application credentials:
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="{folder path}/key.json"
 ```
 
-6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, then transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`:
+6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`, finds who speaks when (`data/diarization.json`), and builds sentence-level, single-speaker dubbing segments in `data/segments.json` (with `data/segments.srt` for review):
 ```bash
 python convert.py                      # uses input/source-video.mp4
 python convert.py path/to/my-video.mp4 # or any other video
