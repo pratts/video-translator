@@ -49,19 +49,29 @@ CHATGPT_API_KEY = your_chatgpt_api_key
 GOOGLE_APPLICATION_CREDENTIALS = {folder path}/key.json
 DEMUCS_MODEL = htdemucs_ft
 DEMUCS_DEVICE =
+ASR_BACKEND = whisperx
+WHISPER_MODEL = large-v3-turbo
+SOURCE_LANGUAGE =
+ASR_DEVICE =
 ```
 - `TRANSLATOR` can be set to either `google` or `gpt`:
    - If you choose `google`, the script will use the Google Translation API. Set the `GOOGLE_APPLICATION_CREDENTIALS` variable to the path of your Google application credentials JSON file.
    - If you choose `gpt`, it will use the ChatGPT API for translation. Set the `CHATGPT_API_KEY` variable with your ChatGPT API key.
 - `DEMUCS_MODEL` is the Demucs model used for vocal separation. `htdemucs_ft` gives the best quality; `htdemucs` is about 4x faster.
 - `DEMUCS_DEVICE` can be `cuda`, `mps` or `cpu`. Leave it empty to use CUDA if available, otherwise CPU.
+- `ASR_BACKEND` is the speech recognition backend. Both are followed by [WhisperX](https://github.com/m-bain/whisperX) word alignment:
+   - `whisperx` (default): faster-whisper with voice activity detection. Most accurate text, but long segments (up to 30s).
+   - `mlx`: [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), Apple Silicon only. Fast, with shorter natural segments, but less accurate on names.
+- `WHISPER_MODEL` is the Whisper model, e.g. `large-v3-turbo`, `large-v3`, `medium`.
+- `SOURCE_LANGUAGE` is the spoken language code (e.g. `ja`). Leave it empty to auto-detect.
+- `ASR_DEVICE` can be `cuda` or `cpu` (whisperx backend). Leave it empty to use CUDA if available, otherwise CPU.
 
 5. Export the Google application credentials:
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="{folder path}/key.json"
 ```
 
-6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, and separates vocals from background into `data/separation/` before transcribing:
+6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, then transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`:
 ```bash
 python convert.py                      # uses input/source-video.mp4
 python convert.py path/to/my-video.mp4 # or any other video
