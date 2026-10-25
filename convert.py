@@ -8,7 +8,7 @@ load_dotenv()
 
 from utils.media import extract_audio, probe_media
 from utils.separate import separate_vocals
-# from utils.transcribe import transcribe_to_srt
+from utils.transcribe import transcribe
 # from utils.translate import translate_subtitles
 # from utils.audio_segment_generator import generate_audio_segments
 
@@ -22,6 +22,7 @@ class Converter:
         self.metadata_file = self.get_path('data/metadata.json')
         self.extracted_audio_file = self.get_path('data/source-audio.wav')
         self.asr_audio_file = self.get_path('data/source-audio-16k.wav')
+        self.transcript_file = self.get_path('data/transcript.json')
         self.subtitle_file = self.get_path('data/subtitles.srt')
         self.raw_subtitle_file = self.get_path('data/translated_raw.srt')
         self.polished_subtitle_file = self.get_path('data/translated_polished.srt')
@@ -43,6 +44,7 @@ class Converter:
             self.metadata_file,
             self.extracted_audio_file,
             self.asr_audio_file,
+            self.transcript_file,
             self.subtitle_file,
             self.raw_subtitle_file,
             self.polished_subtitle_file,
@@ -84,8 +86,12 @@ class Converter:
                         model=os.getenv("DEMUCS_MODEL", "htdemucs_ft"),
                         device=os.getenv("DEMUCS_DEVICE") or None)
 
-        # print("Step 2: Transcribing audio to SRT...")
-        # transcribe_to_srt(self.extracted_audio_file, self.subtitle_file, model_size="turbo")
+        print("Step 2: Transcribing vocals...")
+        transcribe(self.vocal_audio_file, self.transcript_file, self.subtitle_file,
+                   backend=os.getenv("ASR_BACKEND", "whisperx"),
+                   model_name=os.getenv("WHISPER_MODEL", "large-v3-turbo"),
+                   language=os.getenv("SOURCE_LANGUAGE") or None,
+                   device=os.getenv("ASR_DEVICE") or None)
 
         # print("Step 3: Translating subtitles...")
         # translate_subtitles(self.subtitle_file, self.raw_subtitle_file, self.polished_subtitle_file)

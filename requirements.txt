@@ -1,7 +1,8 @@
 # Requirements for video-project
-# For getting native language subtitles from videos
-openai-whisper
-faster-whisper
+# Speech recognition with word-level timestamps (faster-whisper + VAD + wav2vec2 alignment)
+whisperx>=3.8.6
+# Faster transcription on Apple Silicon (ASR_BACKEND=mlx)
+mlx-whisper; sys_platform == "darwin" and platform_machine == "arm64"
 
 # For translating subtitles
 deep-translator
