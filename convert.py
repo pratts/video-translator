@@ -34,9 +34,12 @@ class Converter:
         self.diarization_file = self.get_path('data/diarization.json')
         self.segments_file = self.get_path('data/segments.json')
         self.segments_subtitle_file = self.get_path('data/segments.srt')
-        self.translation_file = self.get_path('data/translation.json')
-        self.raw_subtitle_file = self.get_path('data/translated_raw.srt')
-        self.polished_subtitle_file = self.get_path('data/translated_polished.srt')
+        # each translator writes to its own folder, and later stages read from the selected translator's folder
+        self.translator = os.getenv("TRANSLATOR", "google").lower()
+        self.translation_dir = self.get_path(f'data/translations/{self.translator}')
+        self.translation_file = os.path.join(self.translation_dir, 'translation.json')
+        self.raw_subtitle_file = os.path.join(self.translation_dir, 'translated_raw.srt')
+        self.polished_subtitle_file = os.path.join(self.translation_dir, 'translated_polished.srt')
         self.output_audio_file = self.get_path('data/audio-output.wav')
         self.bgm_file = self.get_path('data/separation/background.wav')
         self.merged_audio_file = self.get_path('data/merged_audio.wav')
@@ -60,9 +63,7 @@ class Converter:
             self.diarization_file,
             self.segments_file,
             self.segments_subtitle_file,
-            self.translation_file,
-            self.raw_subtitle_file,
-            self.polished_subtitle_file,
+            self.translation_dir,
             self.output_audio_file,
             self.separation_dir,
             self.merged_audio_file,
@@ -123,7 +124,7 @@ class Converter:
 
         print("Step 4: Translating segments...")
         translate_segments(segments, self.translation_file, self.raw_subtitle_file, self.polished_subtitle_file,
-                           translator=os.getenv("TRANSLATOR", "google"),
+                           translator=self.translator,
                            target_language=os.getenv("TARGET_LANGUAGE") or "en",
                            glossary=load_glossary(os.getenv("GLOSSARY_FILE")),
                            context=os.getenv("VIDEO_CONTEXT") or None)
