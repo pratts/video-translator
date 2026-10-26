@@ -4,8 +4,7 @@ whisperx>=3.8.6
 # Faster transcription on Apple Silicon (ASR_BACKEND=mlx)
 mlx-whisper; sys_platform == "darwin" and platform_machine == "arm64"
 
-# For translating subtitles
-deep-translator
+# For translating subtitles (local NLLB uses transformers, installed with whisperx)
 openai
 srt
 google-cloud-translate

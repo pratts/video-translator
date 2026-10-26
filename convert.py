@@ -4,7 +4,7 @@ import os
 import shutil
 from dotenv import load_dotenv
 
-# Load .env before importing modules that read it at import time (e.g. translators/google.py)
+# Load .env before importing the pipeline modules, so settings are available when they load
 load_dotenv()
 
 from utils.media import extract_audio, probe_media
@@ -12,7 +12,7 @@ from utils.separate import separate_vocals
 from utils.transcribe import transcribe
 from utils.diarize import diarize
 from utils.segment import build_segments, save_segments
-# from utils.translate import translate_subtitles
+from utils.translate import translate_segments, load_glossary
 # from utils.audio_segment_generator import generate_audio_segments
 
 def env_int(name: str) -> int | None:
@@ -34,6 +34,7 @@ class Converter:
         self.diarization_file = self.get_path('data/diarization.json')
         self.segments_file = self.get_path('data/segments.json')
         self.segments_subtitle_file = self.get_path('data/segments.srt')
+        self.translation_file = self.get_path('data/translation.json')
         self.raw_subtitle_file = self.get_path('data/translated_raw.srt')
         self.polished_subtitle_file = self.get_path('data/translated_polished.srt')
         self.output_audio_file = self.get_path('data/audio-output.wav')
@@ -59,6 +60,7 @@ class Converter:
             self.diarization_file,
             self.segments_file,
             self.segments_subtitle_file,
+            self.translation_file,
             self.raw_subtitle_file,
             self.polished_subtitle_file,
             self.output_audio_file,
@@ -119,8 +121,12 @@ class Converter:
         segments = build_segments(transcript, turns, video_duration)
         save_segments(segments, self.segments_file, self.segments_subtitle_file)
 
-        # print("Step 4: Translating subtitles...")
-        # translate_subtitles(self.subtitle_file, self.raw_subtitle_file, self.polished_subtitle_file)
+        print("Step 4: Translating segments...")
+        translate_segments(segments, self.translation_file, self.raw_subtitle_file, self.polished_subtitle_file,
+                           translator=os.getenv("TRANSLATOR", "google"),
+                           target_language=os.getenv("TARGET_LANGUAGE") or "en",
+                           glossary=load_glossary(os.getenv("GLOSSARY_FILE")),
+                           context=os.getenv("VIDEO_CONTEXT") or None)
 
         # print("Step 5: Generating audio segments from vocals...")
         # generate_audio_segments(self.polished_subtitle_file, self.vocal_audio_file, self.audio_segment_dir)

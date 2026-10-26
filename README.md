@@ -8,7 +8,7 @@ Steps to setup and run the project:
 - Python 3.12 or higher
 - ffmpeg and ffprobe on your `PATH` (used for audio extraction and reading video metadata)
 - Google Cloud account with the Translation API enabled if using Google Translation
-- ChatGPT API key (if using ChatGPT for translation)
+- OpenAI API key if using GPT for translation (or a local OpenAI-compatible server such as [Ollama](https://ollama.com))
 - Hugging Face account and access token, with the terms of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) accepted (for speaker diarization)
 - [Demucs](https://github.com/adefossez/demucs) >= 4.1.0 (installed through `requirements.txt`; used to separate vocals from background audio)
 - `rubberband` and `mecab` installed (for audio processing)
@@ -45,9 +45,6 @@ python clear_files.py
 
 4.  Rename the `.env.example` file to `.env` and set the following parameters:
 ```
-TRANSLATOR = google/gpt based on your preference
-CHATGPT_API_KEY = your_chatgpt_api_key
-GOOGLE_APPLICATION_CREDENTIALS = {folder path}/key.json
 DEMUCS_MODEL = htdemucs_ft
 DEMUCS_DEVICE =
 ASR_BACKEND = whisperx
@@ -59,10 +56,17 @@ NUM_SPEAKERS =
 MIN_SPEAKERS =
 MAX_SPEAKERS =
 DIARIZATION_DEVICE =
+TRANSLATOR = google
+TARGET_LANGUAGE = en
+GLOSSARY_FILE =
+VIDEO_CONTEXT =
+GOOGLE_APPLICATION_CREDENTIALS = {folder path}/key.json
+OPENAI_API_KEY = your_openai_api_key
+LLM_MODEL = gpt-5-mini
+LLM_BASE_URL =
+NLLB_MODEL = facebook/nllb-200-distilled-600M
+TRANSLATION_DEVICE =
 ```
-- `TRANSLATOR` can be set to either `google` or `gpt`:
-   - If you choose `google`, the script will use the Google Translation API. Set the `GOOGLE_APPLICATION_CREDENTIALS` variable to the path of your Google application credentials JSON file.
-   - If you choose `gpt`, it will use the ChatGPT API for translation. Set the `CHATGPT_API_KEY` variable with your ChatGPT API key.
 - `DEMUCS_MODEL` is the Demucs model used for vocal separation. `htdemucs_ft` gives the best quality; `htdemucs` is about 4x faster.
 - `DEMUCS_DEVICE` can be `cuda`, `mps` or `cpu`. Leave it empty to use CUDA if available, otherwise CPU.
 - `ASR_BACKEND` is the speech recognition backend. Both are followed by [WhisperX](https://github.com/m-bain/whisperX) word alignment:
@@ -74,13 +78,19 @@ DIARIZATION_DEVICE =
 - `HF_TOKEN` is a [Hugging Face access token](https://huggingface.co/settings/tokens) used for speaker diarization. Accept the terms of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) with the same account first.
 - `NUM_SPEAKERS`, or `MIN_SPEAKERS` / `MAX_SPEAKERS`, can be set if you know how many people speak. Leave them empty to detect automatically.
 - `DIARIZATION_DEVICE` can be `cuda`, `mps` or `cpu`. Leave it empty to use CUDA, then the Apple GPU (`mps`), then CPU.
+- `TRANSLATOR` is the translation backend. Every segment gets a character budget from its duration, and segments that are too long for their time slot are reported:
+   - `google`: Google Cloud Translation. Set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service account JSON key. Plain machine translation, not shortened for dubbing.
+   - `gpt`: an LLM writes a literal translation and a shorter, natural dubbing line that fits the time slot, using neighbouring lines, `VIDEO_CONTEXT` and the glossary. Set `OPENAI_API_KEY` and `LLM_MODEL`. To run it locally, set `LLM_BASE_URL` to an OpenAI-compatible server, e.g. `http://localhost:11434/v1` for Ollama, and `LLM_MODEL` to a local model such as `qwen2.5:14b`.
+   - `nllb`: fully local [NLLB-200](https://huggingface.co/facebook/nllb-200-distilled-600M) machine translation (`NLLB_MODEL`, `TRANSLATION_DEVICE`). No account needed, lower quality; the model license is non-commercial (CC-BY-NC 4.0).
+- `TARGET_LANGUAGE` is the language to dub into (e.g. `en`, `es`, `hi`). The source language comes from the transcript.
+- `GLOSSARY_FILE` is an optional JSON file of names and terms that must be translated consistently, e.g. `{"熊谷真奈": "Mana Kumagai"}`. `VIDEO_CONTEXT` is an optional one-line description of the video. Both are used by `gpt`.
 
 5. Export the Google application credentials:
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="{folder path}/key.json"
 ```
 
-6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`, finds who speaks when (`data/diarization.json`), and builds sentence-level, single-speaker dubbing segments in `data/segments.json` (with `data/segments.srt` for review):
+6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`, finds who speaks when (`data/diarization.json`), builds sentence-level, single-speaker dubbing segments in `data/segments.json` (with `data/segments.srt` for review), and translates them to `data/translation.json` (source text, literal and dubbing translations, character budget per segment) with `data/translated_raw.srt` and `data/translated_polished.srt`:
 ```bash
 python convert.py                      # uses input/source-video.mp4
 python convert.py path/to/my-video.mp4 # or any other video
