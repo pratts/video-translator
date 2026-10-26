@@ -17,6 +17,7 @@ from utils.voices import build_voice_references
 from utils.synthesize import synthesize_segments, make_regenerator
 from utils.fit import fit_clips
 from utils.mix import mix_dub
+from utils.mux import mux_video
 
 def env_int(name: str, default: int | None = None) -> int | None:
     value = os.getenv(name)
@@ -25,6 +26,10 @@ def env_int(name: str, default: int | None = None) -> int | None:
 def env_float(name: str, default: float) -> float:
     value = os.getenv(name)
     return float(value) if value else default
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    return value.lower() not in ("false", "0", "no") if value else default
 
 class Converter:
     def get_path(self, filename):
@@ -135,7 +140,7 @@ class Converter:
         print("Step 5: Cloning each speaker's voice for the translated segments...")
         references = build_voice_references(segments, turns, self.vocal_audio_file, self.bgm_file, self.voices_dir)
         tts = dict(backend=os.getenv("TTS_BACKEND", "f5"),
-                   verify=os.getenv("TTS_VERIFY", "true").lower() != "false",
+                   verify=env_bool("TTS_VERIFY", True),
                    attempts=env_int("TTS_ATTEMPTS", 3),
                    asr_model=os.getenv("WHISPER_MODEL", "large-v3-turbo"))
         clips = synthesize_segments(translation, references, self.clips_dir, **tts)
@@ -151,13 +156,19 @@ class Converter:
 
         print("Step 7: Mixing the dubbed speech with the background...")
         keep_vocals = os.getenv("MIX_KEEP_VOCALS_DB")
-        mix_dub(timing, self.vocal_audio_file, self.bgm_file, video_duration, self.mix_dir,
-                target_lufs=env_float("MIX_TARGET_LUFS", -16.0),
-                true_peak=env_float("MIX_TRUE_PEAK", -1.5),
-                duck_db=env_float("MIX_DUCK_DB", -6.0),
-                keep_vocals_db=float(keep_vocals) if keep_vocals else None)
+        mix = mix_dub(timing, self.vocal_audio_file, self.bgm_file, video_duration, self.mix_dir,
+                      target_lufs=env_float("MIX_TARGET_LUFS", -16.0),
+                      true_peak=env_float("MIX_TRUE_PEAK", -1.5),
+                      duck_db=env_float("MIX_DUCK_DB", -6.0),
+                      keep_vocals_db=float(keep_vocals) if keep_vocals else None)
 
-        # print("Step 8: Cleaning up temporary files...")
+        print("Step 8: Creating the dubbed video...")
+        mux_video(self.source_video_file, mix["audio"], translation, self.output_dir,
+                  keep_original_audio=env_bool("MUX_KEEP_ORIGINAL_AUDIO", True),
+                  original_subtitles=env_bool("MUX_ORIGINAL_SUBTITLES", True),
+                  audio_bitrate=os.getenv("MUX_AUDIO_BITRATE") or "192k")
+
+        # print("Step 9: Cleaning up temporary files...")
         # self.clear_files()
 
         print("Conversion process completed successfully!")
