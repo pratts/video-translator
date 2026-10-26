@@ -1,37 +1,16 @@
 from pydub import AudioSegment
-import srt
+import json
 import os
 
-def merge_openvoice_speech_with_subtitles(srt_path: str, open_voice_path: str, output_path: str):
-    with open(srt_path, "r", encoding="utf-8") as f:
-        subtitles = list(srt.parse(f.read()))
+def merge_fitted_clips(timing_report_path: str, output_path: str, duration: float):
+    """Place every fitted clip at its start time on a timeline as long as the video (Step 6 guarantees no overlaps)."""
+    with open(timing_report_path, encoding="utf-8") as f:
+        clips = json.load(f)["clips"]
 
-    # Total timeline duration = last subtitle's end + 1 second padding
-    total_duration_ms = int((subtitles[-1].end.total_seconds() + 1) * 1000)
-    timeline = AudioSegment.silent(duration=total_duration_ms)
-
-    for i, sub in enumerate(subtitles):
-        start_ms = int(sub.start.total_seconds() * 1000)
-        end_ms = int(sub.end.total_seconds() * 1000)
-        expected_duration = end_ms - start_ms
-
-        audio_path = os.path.join(open_voice_path, f"seg_{i:04d}.wav")
-        print(f"[🔊] Processing subtitle {i}: {sub.content} (start: {sub.start}, end: {sub.end}), path: {audio_path}")
-        if not os.path.exists(audio_path):
-            print(f"[⚠️] Missing audio for subtitle {i}: {audio_path}")
-            audio_segment = AudioSegment.silent(duration=expected_duration)
-        else:
-            audio_segment = AudioSegment.from_wav(audio_path)
-            # continue
-
-        # audio_segment = AudioSegment.from_wav(audio_path)
-
-        # Pad with silence if shorter than expected (helps with alignment)
-        if len(audio_segment) < expected_duration:
-            pad_ms = expected_duration - len(audio_segment)
-            audio_segment += AudioSegment.silent(duration=pad_ms)
-
-        timeline = timeline.overlay(audio_segment, position=start_ms)
+    timeline = AudioSegment.silent(duration=int(duration * 1000))
+    for clip in clips:
+        print(f"[🔊] Placing segment {clip['id']} at {clip['start']:.2f}s: {clip['text']}")
+        timeline = timeline.overlay(AudioSegment.from_wav(clip["audio"]), position=int(clip["start"] * 1000))
 
     timeline.export(output_path, format="wav")
     print(f"[✅] Exported final audio to: {output_path}")
@@ -60,14 +39,15 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
     translator = os.getenv("TRANSLATOR", "google").lower()
-    open_voice_path = f"./data/translations/{translator}/clips"
-    polished_subtitle_file = f'./data/translations/{translator}/translated_polished.srt'
+    timing_report_file = f"./data/translations/{translator}/fitted/timing_report.json"
+    with open("./data/metadata.json") as f:
+        video_duration = json.load(f)["duration"]
     output_audio_file = "./data/merged_openvoice_audio.wav"
     bgm_file = './data/separation/background.wav'
     merged_audio_file = './data/merged_audio.wav'
     clear_files([output_audio_file, merged_audio_file])
 
-    merge_openvoice_speech_with_subtitles(polished_subtitle_file, open_voice_path, output_audio_file)
+    merge_fitted_clips(timing_report_file, output_audio_file, video_duration)
 
     print("Step 5: Merging cloned audio with background music...")
     merge_voice_with_bgm(output_audio_file, bgm_file, merged_audio_file)

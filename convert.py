@@ -14,11 +14,16 @@ from utils.diarize import diarize
 from utils.segment import build_segments, save_segments
 from utils.translate import translate_segments, load_glossary
 from utils.voices import build_voice_references
-from utils.synthesize import synthesize_segments
+from utils.synthesize import synthesize_segments, make_regenerator
+from utils.fit import fit_clips
 
-def env_int(name: str) -> int | None:
+def env_int(name: str, default: int | None = None) -> int | None:
     value = os.getenv(name)
-    return int(value) if value else None
+    return int(value) if value else default
+
+def env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    return float(value) if value else default
 
 class Converter:
     def get_path(self, filename):
@@ -50,6 +55,7 @@ class Converter:
         # Paths for directories
         self.voices_dir = self.get_path('data/voices')
         self.clips_dir = os.path.join(self.translation_dir, 'clips')
+        self.fitted_dir = os.path.join(self.translation_dir, 'fitted')
         self.separation_dir = self.get_path('data/separation')
         self.output_dir = self.get_path('output')
 
@@ -132,13 +138,22 @@ class Converter:
 
         print("Step 5: Cloning each speaker's voice for the translated segments...")
         references = build_voice_references(segments, turns, self.vocal_audio_file, self.bgm_file, self.voices_dir)
-        synthesize_segments(translation, references, self.clips_dir,
-                            backend=os.getenv("TTS_BACKEND", "f5"),
-                            verify=os.getenv("TTS_VERIFY", "true").lower() != "false",
-                            attempts=env_int("TTS_ATTEMPTS") or 3,
-                            asr_model=os.getenv("WHISPER_MODEL", "large-v3-turbo"))
+        tts = dict(backend=os.getenv("TTS_BACKEND", "f5"),
+                   verify=os.getenv("TTS_VERIFY", "true").lower() != "false",
+                   attempts=env_int("TTS_ATTEMPTS", 3),
+                   asr_model=os.getenv("WHISPER_MODEL", "large-v3-turbo"))
+        clips = synthesize_segments(translation, references, self.clips_dir, **tts)
 
-        # print("Step 6: Cleaning up temporary files...")
+        print("Step 6: Fitting each clip into its time slot...")
+        fit_clips(clips, self.fitted_dir, video_duration=video_duration,
+                  min_speed=env_float("FIT_MIN_SPEED", 0.9),
+                  max_speed=env_float("FIT_MAX_SPEED", 1.25),
+                  hard_max_speed=env_float("FIT_HARD_MAX_SPEED", 1.6),
+                  max_borrow=env_float("FIT_MAX_BORROW", 0.5),
+                  max_retries=env_int("FIT_MAX_RETRANSLATIONS", 2),
+                  regenerate=make_regenerator(translation, self.translation_file, references, **tts))
+
+        # print("Step 7: Cleaning up temporary files...")
         # self.clear_files()
 
         print("Conversion process completed successfully!")

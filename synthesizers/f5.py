@@ -4,6 +4,8 @@ from functools import cache
 import numpy as np
 
 SAMPLE_RATE = 24000
+# generates speech of a requested length (target_duration)
+SUPPORTS_DURATION = True
 # Lines this short come out garbled when squeezed into a tiny slot, so give them a little more room
 MIN_DURATION = 0.8
 
