@@ -197,3 +197,4 @@ project-*.json
 data/*
 .idea/*
 */__pycache__/*
+output/*

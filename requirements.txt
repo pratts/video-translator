@@ -17,6 +17,8 @@ f5-tts
 cutlet
 unidic-lite
 pydub
+# Loudness measurement (EBU R128) for mixing
+pyloudnorm
 # audioop-lts
 torch
 torchvision
