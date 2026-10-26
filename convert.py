@@ -16,6 +16,7 @@ from utils.translate import translate_segments, load_glossary
 from utils.voices import build_voice_references
 from utils.synthesize import synthesize_segments, make_regenerator
 from utils.fit import fit_clips
+from utils.mix import mix_dub
 
 def env_int(name: str, default: int | None = None) -> int | None:
     value = os.getenv(name)
@@ -46,16 +47,14 @@ class Converter:
         self.translation_file = os.path.join(self.translation_dir, 'translation.json')
         self.raw_subtitle_file = os.path.join(self.translation_dir, 'translated_raw.srt')
         self.polished_subtitle_file = os.path.join(self.translation_dir, 'translated_polished.srt')
-        self.output_audio_file = self.get_path('data/audio-output.wav')
         self.bgm_file = self.get_path('data/separation/background.wav')
-        self.merged_audio_file = self.get_path('data/merged_audio.wav')
         self.vocal_audio_file = self.get_path('data/separation/vocals.wav')
-        self.merged_subtitle_file = self.get_path('data/merged_subtitles.srt')
 
         # Paths for directories
         self.voices_dir = self.get_path('data/voices')
         self.clips_dir = os.path.join(self.translation_dir, 'clips')
         self.fitted_dir = os.path.join(self.translation_dir, 'fitted')
+        self.mix_dir = os.path.join(self.translation_dir, 'mix')
         self.separation_dir = self.get_path('data/separation')
         self.output_dir = self.get_path('output')
 
@@ -71,11 +70,8 @@ class Converter:
             self.segments_file,
             self.segments_subtitle_file,
             self.translation_dir,
-            self.output_audio_file,
             self.separation_dir,
-            self.merged_audio_file,
             self.voices_dir,
-            self.output_audio_file
         ]
         for file in files_to_clear:
             if os.path.exists(file):
@@ -145,15 +141,23 @@ class Converter:
         clips = synthesize_segments(translation, references, self.clips_dir, **tts)
 
         print("Step 6: Fitting each clip into its time slot...")
-        fit_clips(clips, self.fitted_dir, video_duration=video_duration,
-                  min_speed=env_float("FIT_MIN_SPEED", 0.9),
-                  max_speed=env_float("FIT_MAX_SPEED", 1.25),
-                  hard_max_speed=env_float("FIT_HARD_MAX_SPEED", 1.6),
-                  max_borrow=env_float("FIT_MAX_BORROW", 0.5),
-                  max_retries=env_int("FIT_MAX_RETRANSLATIONS", 2),
-                  regenerate=make_regenerator(translation, self.translation_file, references, **tts))
+        timing = fit_clips(clips, self.fitted_dir, video_duration=video_duration,
+                           min_speed=env_float("FIT_MIN_SPEED", 0.9),
+                           max_speed=env_float("FIT_MAX_SPEED", 1.25),
+                           hard_max_speed=env_float("FIT_HARD_MAX_SPEED", 1.6),
+                           max_borrow=env_float("FIT_MAX_BORROW", 0.5),
+                           max_retries=env_int("FIT_MAX_RETRANSLATIONS", 2),
+                           regenerate=make_regenerator(translation, self.translation_file, references, **tts))
 
-        # print("Step 7: Cleaning up temporary files...")
+        print("Step 7: Mixing the dubbed speech with the background...")
+        keep_vocals = os.getenv("MIX_KEEP_VOCALS_DB")
+        mix_dub(timing, self.vocal_audio_file, self.bgm_file, video_duration, self.mix_dir,
+                target_lufs=env_float("MIX_TARGET_LUFS", -16.0),
+                true_peak=env_float("MIX_TRUE_PEAK", -1.5),
+                duck_db=env_float("MIX_DUCK_DB", -6.0),
+                keep_vocals_db=float(keep_vocals) if keep_vocals else None)
+
+        # print("Step 8: Cleaning up temporary files...")
         # self.clear_files()
 
         print("Conversion process completed successfully!")

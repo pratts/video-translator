@@ -130,6 +130,8 @@ def _words(text: str) -> list[str]:
 def word_error_rate(expected: str, heard: str) -> float:
     """Edit distance between word sequences, divided by the number of expected words."""
     ref, hyp = _words(expected), _words(heard)
+    if "".join(ref) == "".join(hyp):  # same words, spaced differently ("Mana Kumagai" heard as "Manakumagai")
+        return 0.0
     row = list(range(len(hyp) + 1))
     for i in range(1, len(ref) + 1):
         diagonal, row[0] = row[0], i
