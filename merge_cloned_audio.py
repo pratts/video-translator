@@ -57,8 +57,11 @@ def merge_voice_with_bgm(source_audio_path, bgm_path, output_path):
     mixed.export(output_path, format="wav")
 
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv()
     open_voice_path = "./data/processed"
-    polished_subtitle_file = './data/translated_polished.srt'
+    translator = os.getenv("TRANSLATOR", "google").lower()
+    polished_subtitle_file = f'./data/translations/{translator}/translated_polished.srt'
     output_audio_file = "./data/merged_openvoice_audio.wav"
     bgm_file = './data/separation/background.wav'
     merged_audio_file = './data/merged_audio.wav'

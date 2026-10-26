@@ -90,7 +90,7 @@ TRANSLATION_DEVICE =
 export GOOGLE_APPLICATION_CREDENTIALS="{folder path}/key.json"
 ```
 
-6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`, finds who speaks when (`data/diarization.json`), builds sentence-level, single-speaker dubbing segments in `data/segments.json` (with `data/segments.srt` for review), and translates them to `data/translation.json` (source text, literal and dubbing translations, character budget per segment) with `data/translated_raw.srt` and `data/translated_polished.srt`:
+6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`, finds who speaks when (`data/diarization.json`), builds sentence-level, single-speaker dubbing segments in `data/segments.json` (with `data/segments.srt` for review), and translates them to `data/translations/<TRANSLATOR>/translation.json` (source text, literal and dubbing translations, character budget per segment) with `translated_raw.srt` and `translated_polished.srt`. Each translator (`gpt`, `google`, `nllb`) has its own folder, so their results can be compared, and later steps use the folder of the selected `TRANSLATOR`:
 ```bash
 python convert.py                      # uses input/source-video.mp4
 python convert.py path/to/my-video.mp4 # or any other video
