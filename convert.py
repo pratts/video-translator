@@ -13,7 +13,8 @@ from utils.transcribe import transcribe
 from utils.diarize import diarize
 from utils.segment import build_segments, save_segments
 from utils.translate import translate_segments, load_glossary
-# from utils.audio_segment_generator import generate_audio_segments
+from utils.voices import build_voice_references
+from utils.synthesize import synthesize_segments
 
 def env_int(name: str) -> int | None:
     value = os.getenv(name)
@@ -47,8 +48,8 @@ class Converter:
         self.merged_subtitle_file = self.get_path('data/merged_subtitles.srt')
 
         # Paths for directories
-        self.open_voice_path = self.get_path('data/processed')
-        self.audio_segment_dir = self.get_path('data/segments')
+        self.voices_dir = self.get_path('data/voices')
+        self.clips_dir = os.path.join(self.translation_dir, 'clips')
         self.separation_dir = self.get_path('data/separation')
         self.output_dir = self.get_path('output')
 
@@ -67,8 +68,7 @@ class Converter:
             self.output_audio_file,
             self.separation_dir,
             self.merged_audio_file,
-            self.audio_segment_dir,
-            self.open_voice_path,
+            self.voices_dir,
             self.output_audio_file
         ]
         for file in files_to_clear:
@@ -123,14 +123,20 @@ class Converter:
         save_segments(segments, self.segments_file, self.segments_subtitle_file)
 
         print("Step 4: Translating segments...")
-        translate_segments(segments, self.translation_file, self.raw_subtitle_file, self.polished_subtitle_file,
-                           translator=self.translator,
-                           target_language=os.getenv("TARGET_LANGUAGE") or "en",
-                           glossary=load_glossary(os.getenv("GLOSSARY_FILE")),
-                           context=os.getenv("VIDEO_CONTEXT") or None)
+        translation = translate_segments(segments, self.translation_file, self.raw_subtitle_file,
+                                         self.polished_subtitle_file,
+                                         translator=self.translator,
+                                         target_language=os.getenv("TARGET_LANGUAGE") or "en",
+                                         glossary=load_glossary(os.getenv("GLOSSARY_FILE")),
+                                         context=os.getenv("VIDEO_CONTEXT") or None)
 
-        # print("Step 5: Generating audio segments from vocals...")
-        # generate_audio_segments(self.polished_subtitle_file, self.vocal_audio_file, self.audio_segment_dir)
+        print("Step 5: Cloning each speaker's voice for the translated segments...")
+        references = build_voice_references(segments, turns, self.vocal_audio_file, self.bgm_file, self.voices_dir)
+        synthesize_segments(translation, references, self.clips_dir,
+                            backend=os.getenv("TTS_BACKEND", "f5"),
+                            verify=os.getenv("TTS_VERIFY", "true").lower() != "false",
+                            attempts=env_int("TTS_ATTEMPTS") or 3,
+                            asr_model=os.getenv("WHISPER_MODEL", "large-v3-turbo"))
 
         # print("Step 6: Cleaning up temporary files...")
         # self.clear_files()
