@@ -15,7 +15,7 @@ def merge_openvoice_speech_with_subtitles(srt_path: str, open_voice_path: str, o
         end_ms = int(sub.end.total_seconds() * 1000)
         expected_duration = end_ms - start_ms
 
-        audio_path = os.path.join(open_voice_path, f"converted_{i:04d}.wav")
+        audio_path = os.path.join(open_voice_path, f"seg_{i:04d}.wav")
         print(f"[🔊] Processing subtitle {i}: {sub.content} (start: {sub.start}, end: {sub.end}), path: {audio_path}")
         if not os.path.exists(audio_path):
             print(f"[⚠️] Missing audio for subtitle {i}: {audio_path}")
@@ -59,8 +59,8 @@ def merge_voice_with_bgm(source_audio_path, bgm_path, output_path):
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
-    open_voice_path = "./data/processed"
     translator = os.getenv("TRANSLATOR", "google").lower()
+    open_voice_path = f"./data/translations/{translator}/clips"
     polished_subtitle_file = f'./data/translations/{translator}/translated_polished.srt'
     output_audio_file = "./data/merged_openvoice_audio.wav"
     bgm_file = './data/separation/background.wav'

@@ -11,7 +11,8 @@ Steps to setup and run the project:
 - OpenAI API key if using GPT for translation (or a local OpenAI-compatible server such as [Ollama](https://ollama.com))
 - Hugging Face account and access token, with the terms of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) accepted (for speaker diarization)
 - [Demucs](https://github.com/adefossez/demucs) >= 4.1.0 (installed through `requirements.txt`; used to separate vocals from background audio)
-- `rubberband` and `mecab` installed (for audio processing)
+- `rubberband` installed (for audio processing)
+- [F5-TTS](https://github.com/SWivid/F5-TTS) for voice cloning (installed through `requirements.txt`; the model is downloaded on first run). Its code is MIT, but the pretrained `F5TTS_v1_Base` weights are CC-BY-NC 4.0, so dubbed output is for non-commercial use only
 
 ### Installation Instructions: ###
 1. Clone the repository:
@@ -66,6 +67,11 @@ LLM_MODEL = gpt-5-mini
 LLM_BASE_URL =
 NLLB_MODEL = facebook/nllb-200-distilled-600M
 TRANSLATION_DEVICE =
+TTS_BACKEND = f5
+F5_MODEL = F5TTS_v1_Base
+TTS_DEVICE =
+TTS_VERIFY = true
+TTS_ATTEMPTS = 3
 ```
 - `DEMUCS_MODEL` is the Demucs model used for vocal separation. `htdemucs_ft` gives the best quality; `htdemucs` is about 4x faster.
 - `DEMUCS_DEVICE` can be `cuda`, `mps` or `cpu`. Leave it empty to use CUDA if available, otherwise CPU.
@@ -84,28 +90,26 @@ TRANSLATION_DEVICE =
    - `nllb`: fully local [NLLB-200](https://huggingface.co/facebook/nllb-200-distilled-600M) machine translation (`NLLB_MODEL`, `TRANSLATION_DEVICE`). No account needed, lower quality; the model license is non-commercial (CC-BY-NC 4.0).
 - `TARGET_LANGUAGE` is the language to dub into (e.g. `en`, `es`, `hi`). The source language comes from the transcript.
 - `GLOSSARY_FILE` is an optional JSON file of names and terms that must be translated consistently, e.g. `{"熊谷真奈": "Mana Kumagai"}`. `VIDEO_CONTEXT` is an optional one-line description of the video. Both are used by `gpt`.
+- `TTS_BACKEND` is the voice cloning backend. `f5` ([F5-TTS](https://github.com/SWivid/F5-TTS)) clones each speaker's voice from a short reference and generates every line at exactly the length of its time slot. `F5_MODEL` is the F5-TTS model and `TTS_DEVICE` can be `cuda`, `mps` or `cpu` (empty = CUDA, then the Apple GPU, then CPU).
+- `TTS_VERIFY` (default `true`) transcribes every generated clip and regenerates it with another seed, up to `TTS_ATTEMPTS` times, when it does not say the intended line. Set it to `false` to skip the check and generate faster.
 
 5. Export the Google application credentials:
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="{folder path}/key.json"
 ```
 
-6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`, finds who speaks when (`data/diarization.json`), builds sentence-level, single-speaker dubbing segments in `data/segments.json` (with `data/segments.srt` for review), and translates them to `data/translations/<TRANSLATOR>/translation.json` (source text, literal and dubbing translations, character budget per segment) with `translated_raw.srt` and `translated_polished.srt`. Each translator (`gpt`, `google`, `nllb`) has its own folder, so their results can be compared, and later steps use the folder of the selected `TRANSLATOR`:
+6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`, finds who speaks when (`data/diarization.json`), builds sentence-level, single-speaker dubbing segments in `data/segments.json` (with `data/segments.srt` for review), and translates them to `data/translations/<TRANSLATOR>/translation.json` (source text, literal and dubbing translations, character budget per segment) with `translated_raw.srt` and `translated_polished.srt`. Each translator (`gpt`, `google`, `nllb`) has its own folder, so their results can be compared, and later steps use the folder of the selected `TRANSLATOR`. Finally it picks a clean voice reference for each speaker (`data/voices/<speaker>.wav` and `references.json`) and speaks every translated segment in that speaker's cloned voice, sized to the segment's time slot, into `data/translations/<TRANSLATOR>/clips/seg_0000.wav, …` with `clips.json` (clip length, what speech recognition heard, and whether it matched):
 ```bash
 python convert.py                      # uses input/source-video.mp4
 python convert.py path/to/my-video.mp4 # or any other video
 ```
 
-7. Clone and update the paths in OpenVoice repository at https://github.com/pratts/OpenVoice.
-   - Follow the instructions in the repository.
-   - Run the script `python openvoice_clone.py` to generate cloned audio segments.
-
-8. In the file `merge_cloned_audio.py`, update the paths of the input data and OpenVoice output path and run the script:
+7. Merge the cloned clips with the background audio (uses the clips of the selected `TRANSLATOR`):
 ```bash
 python merge_cloned_audio.py
 ```
 
-9. Merge the translated audio with the original video:
+8. Merge the translated audio with the original video:
 ```bash
 ffmpeg -i ./input/source-video.mp4 -i ./data/merged_audio.wav -c:v copy -map 0:v:0 -map 1:a:0 -shortest ./output/output-video.mp4
 ```
