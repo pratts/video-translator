@@ -1,0 +1,59 @@
+# Pipeline settings. Copy to config.toml (or pass --config path). Environment variables with the same name in
+# upper case (e.g. TRANSLATOR in .env) override these, and command-line flags override both.
+# Secrets (OPENAI_API_KEY, GOOGLE_APPLICATION_CREDENTIALS, HF_TOKEN) belong in .env, not here.
+# Empty values ("") use the default. Devices: "cuda", "mps" or "cpu"; empty = pick automatically.
+
+# Languages: source (empty = detect) and target
+source_language = ""
+target_language = "en"
+
+# Source separation (Demucs): htdemucs_ft = best quality, htdemucs = ~4x faster
+demucs_model = "htdemucs_ft"
+demucs_device = ""
+
+# Speech recognition: backend (whisperx, or mlx on Apple Silicon) and Whisper model
+asr_backend = "whisperx"
+whisper_model = "large-v3-turbo"
+asr_device = ""
+
+# Speaker diarization: exact or min/max number of speakers if known (comment out = detect)
+# num_speakers = 2
+# min_speakers = 1
+# max_speakers = 4
+diarization_device = ""
+
+# Translation: google, gpt (OpenAI or any OpenAI-compatible server) or nllb (fully local)
+translator = "google"
+glossary_file = ""          # JSON {"source term": "translation"}, used by gpt
+video_context = ""          # one-line description of the video, used by gpt
+llm_model = "gpt-5-mini"
+llm_base_url = ""           # e.g. http://localhost:11434/v1 for Ollama; empty = OpenAI
+nllb_model = "facebook/nllb-200-distilled-600M"
+translation_device = ""
+
+# Voice cloning: backend and model; check every clip with speech recognition and retry up to tts_attempts times
+tts_backend = "f5"
+f5_model = "F5TTS_v1_Base"
+tts_device = ""
+tts_verify = true
+tts_attempts = 3
+
+# Fitting clips into their time slots: playback speed range (below 1 = slower), hard limit before a warning,
+# seconds of following silence a clip may use, and how often an LLM translator may shorten a line
+fit_min_speed = 0.9
+fit_max_speed = 1.25
+fit_hard_max_speed = 1.6
+fit_max_borrow = 0.5
+fit_max_retranslations = 2
+
+# Mixing: loudness target (-16 LUFS web, -23 broadcast), true-peak limit (dBTP), background level under dubbed
+# speech (dB), and the level of original vocal sounds outside dubbed lines (comment out = off)
+mix_target_lufs = -16
+mix_true_peak = -1.5
+mix_duck_db = -6
+# mix_keep_vocals_db = -12
+
+# Final video: keep the source audio as a second track, add original-language subtitles, dubbed AAC bitrate
+mux_keep_original_audio = true
+mux_original_subtitles = true
+mux_audio_bitrate = "192k"

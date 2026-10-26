@@ -1,0 +1,30 @@
+# Versions tested together on Python 3.12 (macOS, Apple Silicon). whisperx pins torch~=2.8 and huggingface-hub<1.0;
+# f5-tts and the transformers/huggingface-hub releases it would otherwise pull in must stay compatible with that.
+ctranslate2==4.8.2
+cutlet==0.5.2
+demucs==4.1.0
+f5-tts==1.1.22
+faster-whisper==1.2.1
+fugashi==1.5.2
+google-cloud-translate==3.28.0
+huggingface_hub==0.36.2
+librosa==1.0.0
+mlx==0.32.4
+mlx-whisper==0.4.3
+numpy==2.5.3
+openai==3.24.0
+pyannote-audio==4.0.7
+pydub==0.25.1
+pyloudnorm==0.2.0
+pyrubberband==0.4.0
+pytest==9.1.1
+python-dotenv==1.2.4
+scipy==1.18.1
+soundfile==0.14.0
+srt==3.5.3
+tokenizers==0.22.2
+torch==2.8.0
+torchaudio==2.8.0
+transformers==4.57.6
+unidic-lite==1.0.8
+whisperx==3.8.6

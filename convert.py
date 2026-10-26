@@ -2,183 +2,216 @@ import argparse
 import json
 import os
 import shutil
+import sys
 from dotenv import load_dotenv
 
-# Load .env before importing the pipeline modules, so settings are available when they load
+# Load .env before importing the pipeline modules, so secrets and settings are available when they load
 load_dotenv()
 
-from utils.media import extract_audio, probe_media
-from utils.separate import separate_vocals
-from utils.transcribe import transcribe
-from utils.diarize import diarize
-from utils.segment import build_segments, save_segments
-from utils.translate import translate_segments, load_glossary
-from utils.voices import build_voice_references
-from utils.synthesize import synthesize_segments, make_regenerator
-from utils.fit import fit_clips
-from utils.mix import mix_dub
-from utils.mux import mux_video
+from utils.config import load_config
+from utils.pipeline import Pipeline, Stage, file_id
+from utils.mux import output_path_for
 
-def env_int(name: str, default: int | None = None) -> int | None:
-    value = os.getenv(name)
-    return int(value) if value else default
+# Each stage imports its own modules when it runs, so --help, --clean and skipped stages
+# do not load the heavy model libraries
 
-def env_float(name: str, default: float) -> float:
-    value = os.getenv(name)
-    return float(value) if value else default
 
-def env_bool(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    return value.lower() not in ("false", "0", "no") if value else default
+def read_json(path: str):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
-class Converter:
-    def get_path(self, filename):
-        """Get the absolute path of a file in the current directory."""
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
-    
-    def __init__(self, source_video_file: str):
-        self.source_video_file = os.path.abspath(source_video_file)
-        self.metadata_file = self.get_path('data/metadata.json')
-        self.extracted_audio_file = self.get_path('data/source-audio.wav')
-        self.asr_audio_file = self.get_path('data/source-audio-16k.wav')
-        self.transcript_file = self.get_path('data/transcript.json')
-        self.subtitle_file = self.get_path('data/subtitles.srt')
-        self.diarization_file = self.get_path('data/diarization.json')
-        self.segments_file = self.get_path('data/segments.json')
-        self.segments_subtitle_file = self.get_path('data/segments.srt')
-        # each translator writes to its own folder, and later stages read from the selected translator's folder
-        self.translator = os.getenv("TRANSLATOR", "google").lower()
-        self.translation_dir = self.get_path(f'data/translations/{self.translator}')
-        self.translation_file = os.path.join(self.translation_dir, 'translation.json')
-        self.raw_subtitle_file = os.path.join(self.translation_dir, 'translated_raw.srt')
-        self.polished_subtitle_file = os.path.join(self.translation_dir, 'translated_polished.srt')
-        self.bgm_file = self.get_path('data/separation/background.wav')
-        self.vocal_audio_file = self.get_path('data/separation/vocals.wav')
 
-        # Paths for directories
-        self.voices_dir = self.get_path('data/voices')
-        self.clips_dir = os.path.join(self.translation_dir, 'clips')
-        self.fitted_dir = os.path.join(self.translation_dir, 'fitted')
-        self.mix_dir = os.path.join(self.translation_dir, 'mix')
-        self.separation_dir = self.get_path('data/separation')
-        self.output_dir = self.get_path('output')
+class Run:
+    """Paths and settings for dubbing one video. Everything for the video lives in <work_dir>/<video name>/."""
 
-    def clear_files(self):
-        import os
-        files_to_clear = [
-            self.metadata_file,
-            self.extracted_audio_file,
-            self.asr_audio_file,
-            self.transcript_file,
-            self.subtitle_file,
-            self.diarization_file,
-            self.segments_file,
-            self.segments_subtitle_file,
-            self.translation_dir,
-            self.separation_dir,
-            self.voices_dir,
-        ]
-        for file in files_to_clear:
-            if os.path.exists(file):
-                if os.path.isdir(file):
-                    shutil.rmtree(file)
-                else:
-                    os.remove(file)
-                print(f"Cleared file: {file}")
-            else:
-                print(f"File not found, skipping: {file}")
+    def __init__(self, video: str, config: dict, work_root: str = "work", output_dir: str = "output"):
+        self.video = os.path.abspath(video)
+        self.config = config
+        self.name = os.path.splitext(os.path.basename(video))[0]
+        self.work_dir = os.path.abspath(os.path.join(work_root, self.name))
+        self.output_dir = os.path.abspath(output_dir)
+        w = lambda *p: os.path.join(self.work_dir, *p)
 
-    def create_directories(self):
-        os.makedirs('./data', exist_ok=True)
-        os.makedirs('./input', exist_ok=True)
-        os.makedirs('./output', exist_ok=True)
-    
-    def convert(self):
-        print("Starting conversion process...")
+        self.metadata = w("metadata.json")
+        self.source_audio = w("source-audio.wav")
+        self.vocals = w("separation", "vocals.wav")
+        self.background = w("separation", "background.wav")
+        self.transcript = w("transcript.json")
+        self.transcript_srt = w("subtitles.srt")
+        self.diarization = w("diarization.json")
+        self.segments = w("segments.json")
+        self.segments_srt = w("segments.srt")
+        self.voices_dir = w("voices")
+        self.references = w("voices", "references.json")
+        # each translator has its own folder, and every later stage reads from the selected translator's folder
+        self.translation_dir = w("translations", config["TRANSLATOR"])
+        self.translation = os.path.join(self.translation_dir, "translation.json")
+        self.raw_srt = os.path.join(self.translation_dir, "translated_raw.srt")
+        self.polished_srt = os.path.join(self.translation_dir, "translated_polished.srt")
+        self.clips_dir = os.path.join(self.translation_dir, "clips")
+        self.fitted_dir = os.path.join(self.translation_dir, "fitted")
+        self.mix_dir = os.path.join(self.translation_dir, "mix")
 
-        print("Step 0: Clearing temporary files...")
-        self.create_directories()
+    def duration(self) -> float:
+        return read_json(self.metadata)["duration"]
 
-        print("Step 1: Extracting audio from video...")
-        probe_media(self.source_video_file, self.metadata_file)
-        extract_audio(self.source_video_file, self.extracted_audio_file)
-        extract_audio(self.source_video_file, self.asr_audio_file, sample_rate=16000, mono=True)
+    def tts_options(self) -> dict:
+        c = self.config
+        return dict(backend=c["TTS_BACKEND"], verify=c["TTS_VERIFY"], attempts=c["TTS_ATTEMPTS"],
+                    asr_model=c["WHISPER_MODEL"])
 
-        print("Step 1b: Separating vocals from background...")
-        separate_vocals(self.extracted_audio_file, self.vocal_audio_file, self.bgm_file,
-                        model=os.getenv("DEMUCS_MODEL", "htdemucs_ft"),
-                        device=os.getenv("DEMUCS_DEVICE") or None)
 
-        print("Step 2: Transcribing vocals...")
-        transcribe(self.vocal_audio_file, self.transcript_file, self.subtitle_file,
-                   backend=os.getenv("ASR_BACKEND", "whisperx"),
-                   model_name=os.getenv("WHISPER_MODEL", "large-v3-turbo"),
-                   language=os.getenv("SOURCE_LANGUAGE") or None,
-                   device=os.getenv("ASR_DEVICE") or None)
+# === Stages ===
+def extract(run: Run):
+    from utils.media import extract_audio, probe_media
+    probe_media(run.video, run.metadata)
+    extract_audio(run.video, run.source_audio)
 
-        print("Step 3: Finding speakers and building dubbing segments...")
-        turns = diarize(self.vocal_audio_file, self.diarization_file, os.getenv("HF_TOKEN"),
-                        num_speakers=env_int("NUM_SPEAKERS"),
-                        min_speakers=env_int("MIN_SPEAKERS"),
-                        max_speakers=env_int("MAX_SPEAKERS"),
-                        device=os.getenv("DIARIZATION_DEVICE") or None)
-        with open(self.transcript_file, encoding="utf-8") as f:
-            transcript = json.load(f)
-        with open(self.metadata_file) as f:
-            video_duration = json.load(f)["duration"]
-        segments = build_segments(transcript, turns, video_duration)
-        save_segments(segments, self.segments_file, self.segments_subtitle_file)
 
-        print("Step 4: Translating segments...")
-        translation = translate_segments(segments, self.translation_file, self.raw_subtitle_file,
-                                         self.polished_subtitle_file,
-                                         translator=self.translator,
-                                         target_language=os.getenv("TARGET_LANGUAGE") or "en",
-                                         glossary=load_glossary(os.getenv("GLOSSARY_FILE")),
-                                         context=os.getenv("VIDEO_CONTEXT") or None)
+def separate(run: Run):
+    from utils.separate import separate_vocals
+    separate_vocals(run.source_audio, run.vocals, run.background, model=run.config["DEMUCS_MODEL"],
+                    device=run.config["DEMUCS_DEVICE"] or None)
 
-        print("Step 5: Cloning each speaker's voice for the translated segments...")
-        references = build_voice_references(segments, turns, self.vocal_audio_file, self.bgm_file, self.voices_dir)
-        tts = dict(backend=os.getenv("TTS_BACKEND", "f5"),
-                   verify=env_bool("TTS_VERIFY", True),
-                   attempts=env_int("TTS_ATTEMPTS", 3),
-                   asr_model=os.getenv("WHISPER_MODEL", "large-v3-turbo"))
-        clips = synthesize_segments(translation, references, self.clips_dir, **tts)
 
-        print("Step 6: Fitting each clip into its time slot...")
-        timing = fit_clips(clips, self.fitted_dir, video_duration=video_duration,
-                           min_speed=env_float("FIT_MIN_SPEED", 0.9),
-                           max_speed=env_float("FIT_MAX_SPEED", 1.25),
-                           hard_max_speed=env_float("FIT_HARD_MAX_SPEED", 1.6),
-                           max_borrow=env_float("FIT_MAX_BORROW", 0.5),
-                           max_retries=env_int("FIT_MAX_RETRANSLATIONS", 2),
-                           regenerate=make_regenerator(translation, self.translation_file, references, **tts))
+def transcribe_stage(run: Run):
+    from utils.transcribe import transcribe
+    c = run.config
+    transcribe(run.vocals, run.transcript, run.transcript_srt, backend=c["ASR_BACKEND"], model_name=c["WHISPER_MODEL"],
+               language=c["SOURCE_LANGUAGE"] or None, device=c["ASR_DEVICE"] or None)
 
-        print("Step 7: Mixing the dubbed speech with the background...")
-        keep_vocals = os.getenv("MIX_KEEP_VOCALS_DB")
-        mix = mix_dub(timing, self.vocal_audio_file, self.bgm_file, video_duration, self.mix_dir,
-                      target_lufs=env_float("MIX_TARGET_LUFS", -16.0),
-                      true_peak=env_float("MIX_TRUE_PEAK", -1.5),
-                      duck_db=env_float("MIX_DUCK_DB", -6.0),
-                      keep_vocals_db=float(keep_vocals) if keep_vocals else None)
 
-        print("Step 8: Creating the dubbed video...")
-        mux_video(self.source_video_file, mix["audio"], translation, self.output_dir,
-                  keep_original_audio=env_bool("MUX_KEEP_ORIGINAL_AUDIO", True),
-                  original_subtitles=env_bool("MUX_ORIGINAL_SUBTITLES", True),
-                  audio_bitrate=os.getenv("MUX_AUDIO_BITRATE") or "192k")
+def diarize_stage(run: Run):
+    from utils.diarize import diarize
+    c = run.config
+    diarize(run.vocals, run.diarization, os.getenv("HF_TOKEN"), num_speakers=c["NUM_SPEAKERS"],
+            min_speakers=c["MIN_SPEAKERS"], max_speakers=c["MAX_SPEAKERS"], device=c["DIARIZATION_DEVICE"] or None)
 
-        # print("Step 9: Cleaning up temporary files...")
-        # self.clear_files()
 
-        print("Conversion process completed successfully!")
+def segment(run: Run):
+    from utils.segment import build_segments, save_segments
+    segments = build_segments(read_json(run.transcript), read_json(run.diarization), run.duration())
+    save_segments(segments, run.segments, run.segments_srt)
+
+
+def voices(run: Run):
+    from utils.voices import build_voice_references
+    build_voice_references(read_json(run.segments), read_json(run.diarization), run.vocals, run.background,
+                           run.voices_dir)
+
+
+def translate(run: Run):
+    from utils.translate import translate_segments, load_glossary
+    c = run.config
+    translate_segments(read_json(run.segments), run.translation, run.raw_srt, run.polished_srt,
+                       translator=c["TRANSLATOR"], target_language=c["TARGET_LANGUAGE"],
+                       glossary=load_glossary(c["GLOSSARY_FILE"] or None), context=c["VIDEO_CONTEXT"] or None)
+
+
+def tts(run: Run):
+    from utils.synthesize import synthesize_segments
+    synthesize_segments(read_json(run.translation), read_json(run.references), run.clips_dir, **run.tts_options())
+
+
+def fit(run: Run):
+    from utils.fit import fit_clips
+    from utils.synthesize import make_regenerator
+    c = run.config
+    regenerate = make_regenerator(read_json(run.translation), run.translation, read_json(run.references),
+                                  **run.tts_options())
+    fit_clips(read_json(os.path.join(run.clips_dir, "clips.json")), run.fitted_dir, video_duration=run.duration(),
+              min_speed=c["FIT_MIN_SPEED"], max_speed=c["FIT_MAX_SPEED"], hard_max_speed=c["FIT_HARD_MAX_SPEED"],
+              max_borrow=c["FIT_MAX_BORROW"], max_retries=c["FIT_MAX_RETRANSLATIONS"], regenerate=regenerate)
+
+
+def mix(run: Run):
+    from utils.mix import mix_dub
+    c = run.config
+    mix_dub(read_json(os.path.join(run.fitted_dir, "timing_report.json")), run.vocals, run.background,
+            run.duration(), run.mix_dir, target_lufs=c["MIX_TARGET_LUFS"], true_peak=c["MIX_TRUE_PEAK"],
+            duck_db=c["MIX_DUCK_DB"], keep_vocals_db=c["MIX_KEEP_VOCALS_DB"])
+
+
+def mux(run: Run):
+    from utils.mux import mux_video
+    c = run.config
+    mux_video(run.video, os.path.join(run.mix_dir, "dubbed_audio.wav"), read_json(run.translation), run.output_dir,
+              keep_original_audio=c["MUX_KEEP_ORIGINAL_AUDIO"], original_subtitles=c["MUX_ORIGINAL_SUBTITLES"],
+              audio_bitrate=c["MUX_AUDIO_BITRATE"])
+
+
+STAGES = [
+    Stage("extract", "reading video metadata and extracting the audio", extract,
+          lambda r: [r.metadata, r.source_audio]),
+    Stage("separate", "separating vocals from background", separate,
+          lambda r: [r.vocals, r.background], ["DEMUCS_MODEL"]),
+    Stage("transcribe", "transcribing the vocals", transcribe_stage,
+          lambda r: [r.transcript], ["ASR_BACKEND", "WHISPER_MODEL", "SOURCE_LANGUAGE"]),
+    Stage("diarize", "finding who speaks when", diarize_stage,
+          lambda r: [r.diarization], ["NUM_SPEAKERS", "MIN_SPEAKERS", "MAX_SPEAKERS"]),
+    Stage("segment", "building dubbing segments", segment, lambda r: [r.segments]),
+    Stage("voices", "picking a voice reference for each speaker", voices, lambda r: [r.references]),
+    Stage("translate", "translating the segments", translate, lambda r: [r.translation],
+          ["TRANSLATOR", "TARGET_LANGUAGE", "GLOSSARY_FILE", "VIDEO_CONTEXT", "LLM_MODEL", "LLM_BASE_URL",
+           "NLLB_MODEL"], per_translator=True),
+    Stage("tts", "speaking each segment in its speaker's cloned voice", tts,
+          lambda r: [os.path.join(r.clips_dir, "clips.json")],
+          ["TTS_BACKEND", "F5_MODEL", "TTS_VERIFY", "TTS_ATTEMPTS", "WHISPER_MODEL"], per_translator=True),
+    Stage("fit", "fitting each clip into its time slot", fit,
+          lambda r: [os.path.join(r.fitted_dir, "timing_report.json")],
+          ["FIT_MIN_SPEED", "FIT_MAX_SPEED", "FIT_HARD_MAX_SPEED", "FIT_MAX_BORROW", "FIT_MAX_RETRANSLATIONS"],
+          per_translator=True),
+    Stage("mix", "mixing the dubbed speech with the background", mix,
+          lambda r: [os.path.join(r.mix_dir, "dubbed_audio.wav")],
+          ["MIX_TARGET_LUFS", "MIX_TRUE_PEAK", "MIX_DUCK_DB", "MIX_KEEP_VOCALS_DB"], per_translator=True),
+    Stage("mux", "creating the dubbed video", mux,
+          lambda r: [output_path_for(r.video, r.config["TARGET_LANGUAGE"], r.output_dir)],
+          ["MUX_KEEP_ORIGINAL_AUDIO", "MUX_ORIGINAL_SUBTITLES", "MUX_AUDIO_BITRATE", "TARGET_LANGUAGE"],
+          per_translator=True),
+]
+
+
+def main(argv: list[str] | None = None):
+    parser = argparse.ArgumentParser(
+        description="Translate and dub a video. Finished stages are remembered, so re-running resumes where it "
+                    "stopped and only redoes stages whose settings changed.")
+    parser.add_argument("input", nargs="?", default="input/source-video.mp4", help="path to the source video")
+    parser.add_argument("--src", help="source language code (default: detect)")
+    parser.add_argument("--tgt", help="target language code, e.g. en")
+    parser.add_argument("--translator", choices=["google", "gpt", "nllb"], help="translation backend")
+    parser.add_argument("--tts", choices=["f5"], help="voice cloning backend")
+    parser.add_argument("--config", help="settings file (default: ./config.toml if present)")
+    parser.add_argument("--work-dir", default="work", help="folder for intermediate files (default: work)")
+    parser.add_argument("--output-dir", default="output", help="folder for the dubbed video (default: output)")
+    stage_names = [s.name for s in STAGES]
+    parser.add_argument("--from-stage", choices=stage_names, help="re-run this stage and every stage after it")
+    parser.add_argument("--to-stage", choices=stage_names, help="stop after this stage")
+    parser.add_argument("--force", action="store_true", help="re-run every stage")
+    parser.add_argument("--clean", action="store_true", help="delete this video's work folder and exit")
+    args = parser.parse_args(argv)
+
+    if not os.path.exists(args.input):
+        parser.error(f"input video not found: {args.input}")
+    config = load_config(args.config, {"SOURCE_LANGUAGE": args.src, "TARGET_LANGUAGE": args.tgt,
+                                       "TRANSLATOR": args.translator, "TTS_BACKEND": args.tts})
+    run = Run(args.input, config, args.work_dir, args.output_dir)
+
+    if args.clean:
+        if os.path.exists(run.work_dir):
+            shutil.rmtree(run.work_dir)
+            print(f"🧹 Deleted {run.work_dir}")
+        else:
+            print(f"Nothing to delete: {run.work_dir} does not exist")
+        return
+
+    print(f"🎬 Dubbing {run.video} → {config['TARGET_LANGUAGE']} (translator: {config['TRANSLATOR']}, "
+          f"tts: {config['TTS_BACKEND']}); work folder: {run.work_dir}")
+    pipeline = Pipeline(STAGES, run.work_dir, config["TRANSLATOR"])
+    pipeline.run(run, config, from_stage=args.from_stage, to_stage=args.to_stage, force=args.force,
+                 inputs_id=file_id(run.video))
+    if not args.to_stage or args.to_stage == STAGES[-1].name:
+        print(f"🎉 Done: {output_path_for(run.video, config['TARGET_LANGUAGE'], run.output_dir)}")
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Translate and dub a video.")
-    parser.add_argument("input", nargs="?", default="input/source-video.mp4", help="Path to the source video")
-    args = parser.parse_args()
-
-    converter = Converter(args.input)
-    converter.convert()
-    print("All steps completed successfully!")
-    print("You can now use the output audio file for your video.")
+    sys.exit(main())

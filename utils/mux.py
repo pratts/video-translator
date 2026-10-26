@@ -25,10 +25,10 @@ def mux_video(video_path: str, dubbed_audio_path: str, translation_doc: dict, ou
     Every track is tagged with its language. Returns the output path.
     """
     source, target = translation_doc["source_language"], translation_doc["target_language"]
-    name, ext = os.path.splitext(os.path.basename(video_path))
-    mkv = ext.lower() == ".mkv"
+    name = os.path.splitext(os.path.basename(video_path))[0]
+    output_path = output_path_for(video_path, target, output_dir)
+    mkv = output_path.endswith(".mkv")
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"{name}.{target}{'.mkv' if mkv else '.mp4'}")
 
     subtitle_dir = os.path.join(output_dir, f"{name}.{target}.subtitles")
     tracks = [(target, write_subtitles(translation_doc, "translation", os.path.join(subtitle_dir, f"{target}.srt")))]
@@ -73,6 +73,12 @@ def mux_video(video_path: str, dubbed_audio_path: str, translation_doc: dict, ou
     print(f"✅ Saved {output_path} ({output_duration:.2f}s; audio: {', '.join(t for _, t in audio)}; "
           f"subtitles: {', '.join(_language_name(l) for l, _ in tracks)})")
     return output_path
+
+
+def output_path_for(video_path: str, target_language: str, output_dir: str) -> str:
+    """output/<video name>.<target language>.mp4, or .mkv when the source is MKV."""
+    name, ext = os.path.splitext(os.path.basename(video_path))
+    return os.path.join(output_dir, f"{name}.{target_language}{'.mkv' if ext.lower() == '.mkv' else '.mp4'}")
 
 
 def write_subtitles(translation_doc: dict, field: str, path: str) -> str:
