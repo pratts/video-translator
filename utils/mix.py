@@ -82,6 +82,7 @@ def mix_dub(timing_report: dict, vocals_path: str, background_path: str, duratio
     final, levels = normalize(mix, sr, target_lufs, true_peak)
     sf.write(output_path, final, sr, subtype="PCM_16")
     document = {
+        "audio": os.path.abspath(output_path),
         "duration": round(len(final) / sr, 3),
         "sample_rate": sr,
         "channels": channels,
