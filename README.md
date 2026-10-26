@@ -11,7 +11,7 @@ Steps to setup and run the project:
 - OpenAI API key if using GPT for translation (or a local OpenAI-compatible server such as [Ollama](https://ollama.com))
 - Hugging Face account and access token, with the terms of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) accepted (for speaker diarization)
 - [Demucs](https://github.com/adefossez/demucs) >= 4.1.0 (installed through `requirements.txt`; used to separate vocals from background audio)
-- `rubberband` installed (for audio processing)
+- [Rubber Band](https://breakfastquay.com/rubberband/) command-line tool for time-stretching dubbed clips without changing pitch (`brew install rubberband` on macOS, `apt install rubberband-cli` on Debian/Ubuntu). Without it, a lower-quality librosa fallback is used
 - [F5-TTS](https://github.com/SWivid/F5-TTS) for voice cloning (installed through `requirements.txt`; the model is downloaded on first run). Its code is MIT, but the pretrained `F5TTS_v1_Base` weights are CC-BY-NC 4.0, so dubbed output is for non-commercial use only
 
 ### Installation Instructions: ###
@@ -72,6 +72,11 @@ F5_MODEL = F5TTS_v1_Base
 TTS_DEVICE =
 TTS_VERIFY = true
 TTS_ATTEMPTS = 3
+FIT_MIN_SPEED = 0.9
+FIT_MAX_SPEED = 1.25
+FIT_HARD_MAX_SPEED = 1.6
+FIT_MAX_BORROW = 0.5
+FIT_MAX_RETRANSLATIONS = 2
 ```
 - `DEMUCS_MODEL` is the Demucs model used for vocal separation. `htdemucs_ft` gives the best quality; `htdemucs` is about 4x faster.
 - `DEMUCS_DEVICE` can be `cuda`, `mps` or `cpu`. Leave it empty to use CUDA if available, otherwise CPU.
@@ -92,19 +97,20 @@ TTS_ATTEMPTS = 3
 - `GLOSSARY_FILE` is an optional JSON file of names and terms that must be translated consistently, e.g. `{"熊谷真奈": "Mana Kumagai"}`. `VIDEO_CONTEXT` is an optional one-line description of the video. Both are used by `gpt`.
 - `TTS_BACKEND` is the voice cloning backend. `f5` ([F5-TTS](https://github.com/SWivid/F5-TTS)) clones each speaker's voice from a short reference and generates every line at exactly the length of its time slot. `F5_MODEL` is the F5-TTS model and `TTS_DEVICE` can be `cuda`, `mps` or `cpu` (empty = CUDA, then the Apple GPU, then CPU).
 - `TTS_VERIFY` (default `true`) transcribes every generated clip and regenerates it with another seed, up to `TTS_ATTEMPTS` times, when it does not say the intended line. Set it to `false` to skip the check and generate faster.
+- `FIT_*` control how clips are fitted into their time slots. Each clip keeps its start time and has its silent edges trimmed. A clip shorter than its slot is slowed down to fill it, but not below `FIT_MIN_SPEED`. A longer clip is sped up (up to `FIT_MAX_SPEED`), first within its slot, then using up to `FIT_MAX_BORROW` seconds of the silence after it. If it still does not fit and the translator is `gpt`, the line is shortened and generated again (up to `FIT_MAX_RETRANSLATIONS` times). As a last resort it is sped up as much as needed, with a warning above `FIT_HARD_MAX_SPEED`. Clips never overlap the next line.
 
 5. Export the Google application credentials:
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="{folder path}/key.json"
 ```
 
-6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`, finds who speaks when (`data/diarization.json`), builds sentence-level, single-speaker dubbing segments in `data/segments.json` (with `data/segments.srt` for review), and translates them to `data/translations/<TRANSLATOR>/translation.json` (source text, literal and dubbing translations, character budget per segment) with `translated_raw.srt` and `translated_polished.srt`. Each translator (`gpt`, `google`, `nllb`) has its own folder, so their results can be compared, and later steps use the folder of the selected `TRANSLATOR`. Finally it picks a clean voice reference for each speaker (`data/voices/<speaker>.wav` and `references.json`) and speaks every translated segment in that speaker's cloned voice, sized to the segment's time slot, into `data/translations/<TRANSLATOR>/clips/seg_0000.wav, …` with `clips.json` (clip length, what speech recognition heard, and whether it matched):
+6. Run the convert script to get the translated audio. It extracts the audio, saves the video metadata to `data/metadata.json`, separates vocals from background into `data/separation/`, transcribes the vocals to `data/transcript.json` (language, segments and word-level timestamps) and `data/subtitles.srt`, finds who speaks when (`data/diarization.json`), builds sentence-level, single-speaker dubbing segments in `data/segments.json` (with `data/segments.srt` for review), and translates them to `data/translations/<TRANSLATOR>/translation.json` (source text, literal and dubbing translations, character budget per segment) with `translated_raw.srt` and `translated_polished.srt`. Each translator (`gpt`, `google`, `nllb`) has its own folder, so their results can be compared, and later steps use the folder of the selected `TRANSLATOR`. Finally it picks a clean voice reference for each speaker (`data/voices/<speaker>.wav` and `references.json`) and speaks every translated segment in that speaker's cloned voice, sized to the segment's time slot, into `data/translations/<TRANSLATOR>/clips/seg_0000.wav, …` with `clips.json` (clip length, what speech recognition heard, and whether it matched). Then it fits every clip into its time slot, writing `data/translations/<TRANSLATOR>/fitted/seg_0000.wav, …` and `timing_report.json` (slot, generated, trimmed and fitted length, speed, silence used and retranslations per segment):
 ```bash
 python convert.py                      # uses input/source-video.mp4
 python convert.py path/to/my-video.mp4 # or any other video
 ```
 
-7. Merge the cloned clips with the background audio (uses the clips of the selected `TRANSLATOR`):
+7. Merge the fitted clips with the background audio (uses the clips of the selected `TRANSLATOR`):
 ```bash
 python merge_cloned_audio.py
 ```

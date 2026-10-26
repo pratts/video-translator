@@ -28,5 +28,5 @@ scipy
 demucs>=4.1.0
 soundfile
 
-# Cloning audio
+# Time-stretching dubbed clips without changing pitch (needs the rubberband command-line tool)
 pyrubberband
