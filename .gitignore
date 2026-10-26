@@ -199,3 +199,5 @@ data/*
 */__pycache__/*
 output/*
 .DS_Store
+work/*
+config.toml

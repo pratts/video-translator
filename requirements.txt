@@ -1,34 +1,36 @@
-# Requirements for video-project
-# Speech recognition with word-level timestamps (faster-whisper + VAD + wav2vec2 alignment)
+# Install with the tested versions:  pip install -r requirements.txt -c constraints.txt
+
+# Speech recognition with word-level timestamps (faster-whisper + VAD + wav2vec2 alignment) and diarization (pyannote)
 whisperx>=3.8.6
 # Faster transcription on Apple Silicon (ASR_BACKEND=mlx)
 mlx-whisper; sys_platform == "darwin" and platform_machine == "arm64"
 
-# For translating subtitles (local NLLB uses transformers, installed with whisperx)
-openai
-srt
-google-cloud-translate
+# Separating vocals from background (maintained fork: https://github.com/adefossez/demucs)
+demucs>=4.1.0
 
-# Environment management
-python-dotenv
+# Translation (local NLLB uses transformers, installed with whisperx)
+openai
+google-cloud-translate
+srt
 
 # Voice cloning / TTS (F5-TTS) and Japanese romanization of reference transcripts
 f5-tts
 cutlet
 unidic-lite
-pydub
-# Loudness measurement (EBU R128) for mixing
-pyloudnorm
-# audioop-lts
+
+# Audio processing: loading/resampling, loudness (EBU R128), time-stretching (needs the rubberband CLI)
 torch
-torchvision
 torchaudio
 numpy
 scipy
-
-# Separating vocals from background music (maintained fork: https://github.com/adefossez/demucs)
-demucs>=4.1.0
+librosa
 soundfile
-
-# Time-stretching dubbed clips without changing pitch (needs the rubberband command-line tool)
+pydub
+pyloudnorm
 pyrubberband
+
+# Settings and secrets
+python-dotenv
+
+# Tests
+pytest
