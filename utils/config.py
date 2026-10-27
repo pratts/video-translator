@@ -34,6 +34,7 @@ SETTINGS = {
     "NLLB_MODEL": (str, "facebook/nllb-200-distilled-600M"),
     "TRANSLATION_DEVICE": (str, ""),
     # voice cloning
+    "VOICE_REFERENCES_DIR": (str, ""),     # <speaker>.wav (+ <speaker>.txt) replacing the automatic references
     "TTS_BACKEND": (str, "f5"),
     "F5_MODEL": (str, "F5TTS_v1_Base"),
     "TTS_DEVICE": (str, ""),

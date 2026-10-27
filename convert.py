@@ -104,7 +104,8 @@ def segment(run: Run):
 def voices(run: Run):
     from utils.voices import build_voice_references
     build_voice_references(read_json(run.segments), read_json(run.diarization), run.vocals, run.background,
-                           run.voices_dir)
+                           run.voices_dir, manual_dir=run.config["VOICE_REFERENCES_DIR"] or None,
+                           asr_model=run.config["WHISPER_MODEL"])
 
 
 def translate(run: Run):
@@ -159,7 +160,8 @@ STAGES = [
           lambda r: [r.diarization], ["NUM_SPEAKERS", "MIN_SPEAKERS", "MAX_SPEAKERS"]),
     Stage("segment", "building dubbing segments", segment, lambda r: [r.segments],
           ["SEGMENT_MIN_DURATION", "SEGMENT_MERGE_GAP"]),
-    Stage("voices", "picking a voice reference for each speaker", voices, lambda r: [r.references]),
+    Stage("voices", "picking a voice reference for each speaker", voices, lambda r: [r.references],
+          ["VOICE_REFERENCE_FILES"]),
     Stage("translate", "translating the segments", translate, lambda r: [r.translation],
           ["TRANSLATOR", "TARGET_LANGUAGE", "GLOSSARY", "VIDEO_CONTEXT", "LLM_MODEL", "LLM_BASE_URL",
            "NLLB_MODEL"], per_translator=True),
@@ -180,6 +182,13 @@ STAGES = [
           ["MUX_KEEP_ORIGINAL_AUDIO", "MUX_ORIGINAL_SUBTITLES", "MUX_AUDIO_BITRATE", "TARGET_LANGUAGE"],
           per_translator=True),
 ]
+
+
+def _folder_ids(folder: str) -> list[str]:
+    if not folder or not os.path.isdir(folder):
+        return []
+    return [file_id(os.path.join(folder, name)) for name in sorted(os.listdir(folder))
+            if name.endswith((".wav", ".txt"))]
 
 
 def main(argv: list[str] | None = None):
@@ -210,6 +219,8 @@ def main(argv: list[str] | None = None):
     # the glossary's content, not its path, decides whether transcription and translation must run again
     from utils.translate import load_glossary
     config["GLOSSARY"] = load_glossary(config["GLOSSARY_FILE"] or None)
+    # likewise the manual voice references: adding, replacing or removing one re-runs the voices stage
+    config["VOICE_REFERENCE_FILES"] = _folder_ids(config["VOICE_REFERENCES_DIR"])
     run = Run(args.input, config, args.work_dir, args.output_dir)
 
     if args.clean:
