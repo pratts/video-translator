@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 # Load .env before importing the pipeline modules, so secrets and settings are available when they load
 load_dotenv()
 
+from utils import output
 from utils.config import load_config
 from utils.pipeline import Pipeline, Stage, file_id
 from utils.mux import output_path_for
@@ -194,6 +195,8 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--to-stage", choices=stage_names, help="stop after this stage")
     parser.add_argument("--force", action="store_true", help="re-run every stage")
     parser.add_argument("--clean", action="store_true", help="delete this video's work folder and exit")
+    parser.add_argument("--verbose", action="store_true",
+                        help="also show third-party output (always written to <work folder>/run.log)")
     args = parser.parse_args(argv)
 
     if not os.path.exists(args.input):
@@ -210,6 +213,18 @@ def main(argv: list[str] | None = None):
             print(f"Nothing to delete: {run.work_dir} does not exist")
         return
 
+    os.makedirs(run.work_dir, exist_ok=True)
+    restore = output.setup(os.path.join(run.work_dir, "run.log"), verbose=args.verbose)
+    try:
+        dub(run, config, args)
+    except BaseException:
+        output.log_exception()
+        raise
+    finally:
+        restore()
+
+
+def dub(run: Run, config: dict, args):
     print(f"🎬 Dubbing {run.video} → {config['TARGET_LANGUAGE']} (translator: {config['TRANSLATOR']}, "
           f"tts: {config['TTS_BACKEND']}); work folder: {run.work_dir}")
     pipeline = Pipeline(STAGES, run.work_dir, config["TRANSLATOR"])

@@ -50,8 +50,11 @@ python convert.py my-video.mp4 --from-stage translate    # re-run translation an
 python convert.py my-video.mp4 --to-stage segment        # stop after building the segments (e.g. to review them)
 python convert.py my-video.mp4 --force                   # re-run everything
 python convert.py my-video.mp4 --clean                   # delete the video's work folder
+python convert.py my-video.mp4 --verbose                 # also show the libraries' own output
 ```
 Run `python convert.py --help` for all options.
+
+The console shows the pipeline's own progress, warnings and errors. The libraries' own output (model loading details, known harmless warnings, info logs) is left out unless you pass `--verbose`, but everything, including errors, is written to `work/<video name>/run.log`.
 
 ### Stages
 | Stage | What it does | Main output in `work/<video name>/` |
