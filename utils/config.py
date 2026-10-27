@@ -22,6 +22,9 @@ SETTINGS = {
     "MIN_SPEAKERS": (int, None),
     "MAX_SPEAKERS": (int, None),
     "DIARIZATION_DEVICE": (str, ""),
+    # segmentation
+    "SEGMENT_MIN_DURATION": (float, 1.5),
+    "SEGMENT_MERGE_GAP": (float, 1.0),
     # translation
     "TRANSLATOR": (str, "google"),
     "GLOSSARY_FILE": (str, ""),

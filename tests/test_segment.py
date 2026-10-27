@@ -82,3 +82,43 @@ def test_chinese_speaker_change_never_splits_a_word():
     turns = [{"start": 0.0, "end": 0.9, "speaker": "A"}, {"start": 0.9, "end": 2.0, "speaker": "B"}]
     texts = [s["text"] for s in build_segments(t, turns, min_duration=0.3, min_turn=0.1)["segments"]]
     assert not any(t.startswith("本") or t.endswith("日") for t in texts)
+
+
+def host_question(guest_echo=False):
+    """
+    The host's question from the sample video, unpunctuated and asked in pieces with ~0.8 s pauses
+    (お聞きしてるんですけど日本のいいとこ? / はい / 思う / 日本のいいところ), then the guest's answer.
+    """
+    # piece spans from the sample video's alignment (seed 0; the guest's echo from an unseeded run)
+    echo = ("いいところ", 33.19, 34.11) if guest_echo else ("いいとこ?", 33.21, 33.67)
+    pieces = [("お聞きしてるんですけど日本の", 31.67, echo[1]), echo, ("はい", 34.11, 34.70),
+              ("思う", 35.46, 35.98), ("日本のいいところ", 36.84, 38.18), ("魚だったらやっぱりね", 38.18, 40.25)]
+    blocks = [c for text, start, end in pieces for c in chars(text, start, (end - start) / len(text))]
+    turns = [{"start": 31.6, "end": 33.1, "speaker": "HOST"},
+             {"start": 33.1, "end": 34.1, "speaker": "GUEST" if guest_echo else "HOST"},
+             {"start": 34.1, "end": 38.2, "speaker": "HOST"},
+             {"start": 35.35, "end": 35.384, "speaker": "GUEST"},          # a 34 ms flicker
+             {"start": 38.2, "end": 40.0, "speaker": "GUEST"}]
+    return transcript([words(*blocks)], language="ja"), turns
+
+
+def test_question_asked_in_pieces_becomes_one_line():
+    t, turns = host_question()
+    segments = build_segments(t, turns, video_duration=42.0)["segments"]
+    assert [(s["speaker"], s["text"]) for s in segments] == [
+        ("HOST", "お聞きしてるんですけど日本のいいとこ?はい思う日本のいいところ"), ("GUEST", "魚だったらやっぱりね")]
+
+
+def test_real_reply_stays_and_lines_never_merge_across_it():
+    t, turns = host_question(guest_echo=True)
+    segments = build_segments(t, turns, video_duration=42.0)["segments"]
+    assert [(s["speaker"], s["text"]) for s in segments] == [
+        ("HOST", "お聞きしてるんですけど日本の"), ("GUEST", "いいところ"), ("HOST", "はい思う日本のいいところ"),
+        ("GUEST", "魚だったらやっぱりね")]
+    assert all(a["end"] <= b["start"] for a, b in zip(segments, segments[1:]))
+
+
+def test_short_line_is_not_merged_across_a_long_pause():
+    t = transcript([words(*chars("お聞きしてるんですけど", 0.0, 0.2), *chars("はい", 3.5, 0.2))], language="ja")
+    segments = build_segments(t, [{"start": 0, "end": 5, "speaker": "S"}])["segments"]
+    assert [s["text"] for s in segments] == ["お聞きしてるんですけど", "はい"]
