@@ -83,7 +83,7 @@ def transcribe_stage(run: Run):
     from utils.transcribe import transcribe
     c = run.config
     transcribe(run.vocals, run.transcript, run.transcript_srt, backend=c["ASR_BACKEND"], model_name=c["WHISPER_MODEL"],
-               language=c["SOURCE_LANGUAGE"] or None, device=c["ASR_DEVICE"] or None)
+               language=c["SOURCE_LANGUAGE"] or None, device=c["ASR_DEVICE"] or None, glossary=c["GLOSSARY"])
 
 
 def diarize_stage(run: Run):
@@ -108,11 +108,11 @@ def voices(run: Run):
 
 
 def translate(run: Run):
-    from utils.translate import translate_segments, load_glossary
+    from utils.translate import translate_segments
     c = run.config
     translate_segments(read_json(run.segments), run.translation, run.raw_srt, run.polished_srt,
                        translator=c["TRANSLATOR"], target_language=c["TARGET_LANGUAGE"],
-                       glossary=load_glossary(c["GLOSSARY_FILE"] or None), context=c["VIDEO_CONTEXT"] or None)
+                       glossary=c["GLOSSARY"], context=c["VIDEO_CONTEXT"] or None)
 
 
 def tts(run: Run):
@@ -154,14 +154,14 @@ STAGES = [
     Stage("separate", "separating vocals from background", separate,
           lambda r: [r.vocals, r.background], ["DEMUCS_MODEL", "DEMUCS_SHIFTS", "SEED"]),
     Stage("transcribe", "transcribing the vocals", transcribe_stage,
-          lambda r: [r.transcript], ["ASR_BACKEND", "WHISPER_MODEL", "SOURCE_LANGUAGE"]),
+          lambda r: [r.transcript], ["ASR_BACKEND", "WHISPER_MODEL", "SOURCE_LANGUAGE", "GLOSSARY"]),
     Stage("diarize", "finding who speaks when", diarize_stage,
           lambda r: [r.diarization], ["NUM_SPEAKERS", "MIN_SPEAKERS", "MAX_SPEAKERS"]),
     Stage("segment", "building dubbing segments", segment, lambda r: [r.segments],
           ["SEGMENT_MIN_DURATION", "SEGMENT_MERGE_GAP"]),
     Stage("voices", "picking a voice reference for each speaker", voices, lambda r: [r.references]),
     Stage("translate", "translating the segments", translate, lambda r: [r.translation],
-          ["TRANSLATOR", "TARGET_LANGUAGE", "GLOSSARY_FILE", "VIDEO_CONTEXT", "LLM_MODEL", "LLM_BASE_URL",
+          ["TRANSLATOR", "TARGET_LANGUAGE", "GLOSSARY", "VIDEO_CONTEXT", "LLM_MODEL", "LLM_BASE_URL",
            "NLLB_MODEL"], per_translator=True),
     Stage("tts", "speaking each segment in its speaker's cloned voice", tts,
           lambda r: [r.clips_doc()],
@@ -207,6 +207,9 @@ def main(argv: list[str] | None = None):
         parser.error(f"input video not found: {args.input}")
     config = load_config(args.config, {"SOURCE_LANGUAGE": args.src, "TARGET_LANGUAGE": args.tgt,
                                        "TRANSLATOR": args.translator, "TTS_BACKEND": args.tts})
+    # the glossary's content, not its path, decides whether transcription and translation must run again
+    from utils.translate import load_glossary
+    config["GLOSSARY"] = load_glossary(config["GLOSSARY_FILE"] or None)
     run = Run(args.input, config, args.work_dir, args.output_dir)
 
     if args.clean:
