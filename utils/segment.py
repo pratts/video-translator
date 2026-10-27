@@ -5,6 +5,8 @@ import unicodedata
 from datetime import timedelta
 from statistics import median
 
+from groupers import group_into_phrases
+
 # Languages whose words are aligned per character and joined without spaces
 NO_SPACE_LANGUAGES = {"ja", "zh", "yue"}
 SENTENCE_END = ("。", "！", "？", "!", "?", ".", "…")
@@ -14,10 +16,13 @@ CLAUSE_END = ("、", "，", ",", ";", "；", ":", "：")
 # === Step 3b: Build dubbing segments from timed words and speaker turns ===
 def build_segments(transcript: dict, turns: list[dict], video_duration: float | None = None,
                    min_turn: float = 0.5, pause: float = 0.35, min_duration: float = 1.0,
-                   max_duration: float = 12.0, merge_gap: float = 0.6) -> dict:
+                   max_duration: float = 12.0, merge_gap: float = 0.6, weak_turn: float = 1.0,
+                   min_support: float = 0.5) -> dict:
     """
     Turn word-level transcript + diarization into sentence-level, single-speaker dubbing segments.
     - min_turn: speaker runs shorter than this (s) are treated as diarization noise and absorbed by a neighbour
+    - weak_turn / min_support: so are runs shorter than weak_turn whose speaker covers less than min_support of
+      their time in the diarization (a boundary that only just tips a word or phrase to the other speaker)
     - pause: silence (s) between words that ends a segment
     - min_duration / merge_gap: segments shorter than min_duration are merged into a same-speaker
       neighbour that is at most merge_gap away
@@ -29,8 +34,9 @@ def build_segments(transcript: dict, turns: list[dict], video_duration: float | 
         return _document(transcript, [], video_duration, no_spaces)
 
     _trim_long_words(words, no_spaces)
+    words = group_into_phrases(words, transcript["language"])
     _assign_speakers(words, turns)
-    _smooth_speakers(words, min_turn)
+    _smooth_speakers(words, min_turn, weak_turn, min_support)
 
     segments = _split(words, pause)
     segments = _merge_short(segments, min_duration, max_duration, merge_gap)
@@ -83,8 +89,12 @@ def _trim_long_words(words: list[dict], no_spaces: bool):
 
 
 def _assign_speakers(words: list[dict], turns: list[dict]):
-    """Give each word the speaker it overlaps most, or the nearest speaker turn if none overlaps."""
+    """
+    Give each word the speaker it overlaps most, or the nearest speaker turn if none overlaps. "support" is the
+    share of the word's time that the diarization gives to that speaker.
+    """
     for w in words:
+        w["support"] = 0.0
         if not turns:
             w["speaker"] = "SPEAKER_00"
             continue
@@ -95,6 +105,7 @@ def _assign_speakers(words: list[dict], turns: list[dict]):
                 overlap[t["speaker"]] = overlap.get(t["speaker"], 0) + o
         if overlap:
             w["speaker"] = max(overlap, key=overlap.get)
+            w["support"] = min(1.0, overlap[w["speaker"]] / max(w["end"] - w["start"], 1e-3))
         else:
             mid = (w["start"] + w["end"]) / 2
             w["speaker"] = min(turns, key=lambda t: abs((t["start"] + t["end"]) / 2 - mid))["speaker"]
@@ -110,16 +121,29 @@ def _runs(words: list[dict]) -> list[tuple[int, int]]:
     return runs
 
 
-def _smooth_speakers(words: list[dict], min_turn: float):
-    """Absorb very short speaker runs (diarization flicker, mid-word speaker changes) into a neighbour."""
+def _smooth_speakers(words: list[dict], min_turn: float, weak_turn: float = 1.0, min_support: float = 0.5):
+    """
+    Absorb speaker runs that are diarization noise into a neighbour, shortest first: runs shorter than min_turn,
+    and runs shorter than weak_turn that the diarization only weakly gives to their speaker.
+    """
+    duration = lambda r: words[r[1] - 1]["end"] - words[r[0]]["start"]
+
+    def support(r):
+        spans = [(w["end"] - w["start"], w.get("support", 1.0)) for w in words[r[0]:r[1]]]
+        total = sum(d for d, _ in spans)
+        return sum(d * s for d, s in spans) / total if total > 0 else 1.0
+
+    def noise(r):
+        return duration(r) < min_turn or (duration(r) < weak_turn and support(r) < min_support)
+
     while True:
         runs = _runs(words)
         if len(runs) < 2:
             return
-        duration = lambda r: words[r[1] - 1]["end"] - words[r[0]]["start"]
-        idx = min(range(len(runs)), key=lambda k: duration(runs[k]))
-        if duration(runs[idx]) >= min_turn:
+        candidates = [k for k in range(len(runs)) if noise(runs[k])]
+        if not candidates:
             return
+        idx = min(candidates, key=lambda k: duration(runs[k]))
 
         start, end = runs[idx]
         prev_run = runs[idx - 1] if idx > 0 else None

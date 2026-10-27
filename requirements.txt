@@ -16,7 +16,11 @@ srt
 # Voice cloning / TTS (F5-TTS) and Japanese romanization of reference transcripts
 f5-tts
 cutlet
+
+# Word segmentation for languages aligned per character (groupers/): Japanese (fugashi + UniDic), Chinese
+fugashi
 unidic-lite
+rjieba
 
 # Audio processing: loading/resampling, loudness (EBU R128), time-stretching (needs the rubberband CLI)
 torch
