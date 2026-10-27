@@ -58,7 +58,7 @@ class Run:
     def tts_options(self) -> dict:
         c = self.config
         return dict(backend=c["TTS_BACKEND"], verify=c["TTS_VERIFY"], attempts=c["TTS_ATTEMPTS"],
-                    asr_model=c["WHISPER_MODEL"])
+                    asr_model=c["WHISPER_MODEL"], max_speed=c["FIT_MAX_SPEED"])
 
     def clips_doc(self) -> str:
         return os.path.join(self.clips_dir, "clips.json")
@@ -160,7 +160,8 @@ STAGES = [
            "NLLB_MODEL"], per_translator=True),
     Stage("tts", "speaking each segment in its speaker's cloned voice", tts,
           lambda r: [r.clips_doc()],
-          ["TTS_BACKEND", "F5_MODEL", "TTS_VERIFY", "TTS_ATTEMPTS", "TTS_ON_MISMATCH", "WHISPER_MODEL"],
+          ["TTS_BACKEND", "F5_MODEL", "TTS_VERIFY", "TTS_ATTEMPTS", "TTS_ON_MISMATCH", "WHISPER_MODEL",
+           "FIT_MAX_SPEED"],
           per_translator=True),
     Stage("fit", "fitting each clip into its time slot", fit,
           lambda r: [os.path.join(r.fitted_dir, "timing_report.json")],
