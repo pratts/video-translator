@@ -95,7 +95,9 @@ def diarize_stage(run: Run):
 
 def segment(run: Run):
     from utils.segment import build_segments, save_segments
-    segments = build_segments(read_json(run.transcript), read_json(run.diarization), run.duration())
+    segments = build_segments(read_json(run.transcript), read_json(run.diarization), run.duration(),
+                              min_duration=run.config["SEGMENT_MIN_DURATION"],
+                              merge_gap=run.config["SEGMENT_MERGE_GAP"])
     save_segments(segments, run.segments, run.segments_srt)
 
 
@@ -155,7 +157,8 @@ STAGES = [
           lambda r: [r.transcript], ["ASR_BACKEND", "WHISPER_MODEL", "SOURCE_LANGUAGE"]),
     Stage("diarize", "finding who speaks when", diarize_stage,
           lambda r: [r.diarization], ["NUM_SPEAKERS", "MIN_SPEAKERS", "MAX_SPEAKERS"]),
-    Stage("segment", "building dubbing segments", segment, lambda r: [r.segments]),
+    Stage("segment", "building dubbing segments", segment, lambda r: [r.segments],
+          ["SEGMENT_MIN_DURATION", "SEGMENT_MERGE_GAP"]),
     Stage("voices", "picking a voice reference for each speaker", voices, lambda r: [r.references]),
     Stage("translate", "translating the segments", translate, lambda r: [r.translation],
           ["TRANSLATOR", "TARGET_LANGUAGE", "GLOSSARY_FILE", "VIDEO_CONTEXT", "LLM_MODEL", "LLM_BASE_URL",

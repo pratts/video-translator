@@ -26,6 +26,11 @@ asr_device = ""
 # max_speakers = 4
 diarization_device = ""
 
+# Dubbing segments: lines shorter than segment_min_duration (s) are merged into a neighbouring line of the same
+# speaker when the pause between them is at most segment_merge_gap (s)
+segment_min_duration = 1.5
+segment_merge_gap = 1.0
+
 # Translation: google, gpt (OpenAI or any OpenAI-compatible server) or nllb (fully local)
 translator = "google"
 glossary_file = ""          # JSON {"source term": "translation"}, used by gpt

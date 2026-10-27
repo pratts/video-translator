@@ -15,17 +15,20 @@ CLAUSE_END = ("、", "，", ",", ";", "；", ":", "：")
 
 # === Step 3b: Build dubbing segments from timed words and speaker turns ===
 def build_segments(transcript: dict, turns: list[dict], video_duration: float | None = None,
-                   min_turn: float = 0.5, pause: float = 0.35, min_duration: float = 1.0,
-                   max_duration: float = 12.0, merge_gap: float = 0.6, weak_turn: float = 1.0,
-                   min_support: float = 0.5) -> dict:
+                   min_turn: float = 0.5, pause: float = 0.35, min_duration: float = 1.5,
+                   max_duration: float = 12.0, merge_gap: float = 1.0, weak_turn: float = 1.0,
+                   min_support: float = 0.5, min_turn_length: float = 0.1) -> dict:
     """
     Turn word-level transcript + diarization into sentence-level, single-speaker dubbing segments.
     - min_turn: speaker runs shorter than this (s) are treated as diarization noise and absorbed by a neighbour
     - weak_turn / min_support: so are runs shorter than weak_turn whose speaker covers less than min_support of
       their time in the diarization (a boundary that only just tips a word or phrase to the other speaker)
     - pause: silence (s) between words that ends a segment
+    - min_turn_length: diarization turns shorter than this (s) are ignored
     - min_duration / merge_gap: segments shorter than min_duration are merged into a same-speaker
-      neighbour that is at most merge_gap away
+      neighbour that is at most merge_gap away. Speech without punctuation is only split at pauses and
+      speaker changes, so this keeps a question asked in pieces ("はい" / "思う" / "日本のいいところ")
+      from becoming sub-second lines that can't be translated or dubbed on their own
     - max_duration: longer segments are split at their best internal pause or clause boundary
     """
     no_spaces = transcript["language"] in NO_SPACE_LANGUAGES
@@ -35,7 +38,7 @@ def build_segments(transcript: dict, turns: list[dict], video_duration: float | 
 
     _trim_long_words(words, no_spaces)
     words = group_into_phrases(words, transcript["language"])
-    _assign_speakers(words, turns)
+    _assign_speakers(words, [t for t in turns if t["end"] - t["start"] >= min_turn_length] or turns)
     _smooth_speakers(words, min_turn, weak_turn, min_support)
 
     segments = _split(words, pause)
