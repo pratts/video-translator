@@ -26,8 +26,9 @@ def synthesize(text: str, reference: dict, language: str, target_duration: float
                seed: int | None = 0) -> tuple[np.ndarray, int]:
     """
     Clone the reference voice saying text. reference = {"audio": wav path, "text": its transcript, "language"}.
-    With target_duration, F5-TTS generates speech of exactly that length (it sets the total
-    mel length = reference + target), so the clip already fits its time slot.
+    With target_duration, F5-TTS generates a clip of exactly that length (it sets the total
+    mel length = reference + target). The clip includes some silence at its edges, so the speech itself is
+    shorter; utils/synthesize.py measures it and asks for more room when needed.
     F5TTS_v1_Base speaks English and Chinese.
     """
     model = _model()

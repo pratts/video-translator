@@ -85,6 +85,7 @@ def fit_clips(clips_doc: dict, output_dir: str, video_duration: float | None = N
             "generated": clip["clip_duration"],
             "trimmed": round(length, 3),
             "fitted": round(fitted, 3),
+            "coverage": round(fitted / slot, 3),
             "speed": round(speed, 3),
             "gap_used": round(max(0.0, fitted - slot), 3),
             "retranslations": retries,
@@ -103,9 +104,11 @@ def fit_clips(clips_doc: dict, output_dir: str, video_duration: float | None = N
     stretched = sum(abs(r["speed"] - 1) > 0.01 for r in fitted)
     borrowed = sum(r["gap_used"] > 0 for r in fitted)
     fallbacks = len(report) - len(fitted)
+    measured = [r["coverage"] for r in fitted if r["slot"] >= 1.0]
+    coverage = f", speech covers {sum(measured) / len(measured):.0%} of slots ≥ 1 s on average" if measured else ""
     print(f"✅ Fitted {len(fitted)} clips into {output_dir} ({stretched} time-stretched, {borrowed} using the "
           f"following silence, {sum(r['retranslations'] for r in fitted)} retranslations, "
-          f"{len(overlaps)} overlaps{f', {fallbacks} not dubbed' if fallbacks else ''})")
+          f"{len(overlaps)} overlaps{f', {fallbacks} not dubbed' if fallbacks else ''}){coverage}")
     return document
 
 

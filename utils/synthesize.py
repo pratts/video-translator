@@ -13,12 +13,19 @@ SYNTHESIZERS = {"f5": "synthesizers.f5"}
 ASR_SAMPLE_RATE = 16000
 # a clip is accepted when its transcript is this close to the text it should say (word error rate)...
 MAX_WER = 0.2
-# ...and no content word (at least this many letters) is missing or heard as a different word
+# ...and no content word (at least this many letters) is missing, heard as a different word, or added
 CONTENT_WORD_LENGTH = 4
 SIMILAR_WORD = 0.6     # spelling similarity above which a heard word counts as the same word ("Kumagae")
 # what to do with a line the TTS cannot say, even after rephrasing
 ON_MISMATCH = ("auto", "original", "silence", "keep")
 SHORT_LINE = 1.0       # auto: lines up to this long keep the original speaker (often backchannels like はい)
+# F5 fills the requested length with silence at the edges, so the speech itself comes out short. A line of at
+# least MIN_CORRECTED_LINE seconds whose speech covers less than TARGET_COVERAGE of its slot is generated
+# again with a longer requested length
+TARGET_COVERAGE = 0.9
+MIN_CORRECTED_LINE = 1.0
+LENGTHEN_STEPS = (0.5, 0.75, 1.0)   # share of the missing time added to the request, one per extra take
+MAX_LENGTHEN = 2.0     # never request more than this many times the slot
 
 
 def get_synthesizer(name: str):
@@ -32,12 +39,15 @@ def get_synthesizer(name: str):
 # === Step 5b: Speak every translated segment in its speaker's cloned voice ===
 def synthesize_segments(translation_doc: dict, references: dict, output_dir: str, backend: str = "f5",
                         verify: bool = True, attempts: int = 3, asr_model: str = "large-v3-turbo",
-                        on_mismatch: str = "auto", translation_path: str | None = None) -> dict:
+                        on_mismatch: str = "auto", translation_path: str | None = None,
+                        max_speed: float = 1.25) -> dict:
     """
     Generate one clip per segment, <output_dir>/seg_0000.wav, sized to the segment's time slot.
     With verify, each clip is transcribed and regenerated with another seed (up to attempts times) when it
     does not say the intended text. If no attempt does, an LLM translator rephrases the line once (saved to
-    translation_path) and it is tried again. A line that still fails, or fails to generate at all, gets the
+    translation_path) and it is tried again. Accepted clips whose speech is much shorter than the slot are
+    generated again with more room (see _lengthen), never so long that fit would need more than max_speed.
+    A line that still fails, or fails to generate at all, gets the
     on_mismatch fallback:
       original: later stages put the original speaker's audio back for that segment ("fallback_original")
       silence:  the line is dropped ("fallback_silence")
@@ -60,12 +70,12 @@ def synthesize_segments(translation_doc: dict, references: dict, output_dir: str
         print(f"🗣️ [{seg['id'] + 1}/{len(translation_doc['segments'])}] {seg['speaker']}: {seg['translation']}")
         try:
             result = _generate(synthesizer, seg["translation"], references[seg["speaker"]], language,
-                               seg["duration"], verify, attempts, asr_model)
+                               seg["duration"], verify, attempts, asr_model, max_speed)
             if verify and not result["ok"] and rephrase:
                 print(f"🔁 Segment {seg['id']} still sounds like {result['heard']!r}; rephrasing the line")
                 text = rephrase(seg["id"], result["heard"])
                 retry = _generate(synthesizer, text, references[seg["speaker"]], language, seg["duration"],
-                                  verify, attempts, asr_model)
+                                  verify, attempts, asr_model, max_speed)
                 retry["attempts"] += result["attempts"]
                 clip.update(rephrased_from=clip["text"], text=text)
                 result = retry
@@ -75,7 +85,8 @@ def synthesize_segments(translation_doc: dict, references: dict, output_dir: str
                 print(f"⚠️ Segment {seg['id']} still sounds like {result['heard']!r} after {result['attempts']} "
                       f"attempts; {_FALLBACK_TEXT[status]}")
             clip.update(heard=result["heard"], wer=None if result["wer"] is None else round(result["wer"], 3),
-                        missed=result["missed"], attempts=result["attempts"])
+                        missed=result["missed"], attempts=result["attempts"], speech=round(result["speech"], 3),
+                        coverage=round(result["speech"] / seg["duration"], 3), lengthened=result["lengthened"])
         except Exception as e:  # keep going: one bad line should not stop the whole dub
             sr = synthesizer.SAMPLE_RATE
             wav = np.zeros(int(seg["duration"] * sr), dtype=np.float32)
@@ -124,25 +135,74 @@ def fallback_summary(clips_doc: dict) -> list[str]:
 
 
 def _generate(synthesizer, text: str, reference: dict, language: str, duration: float | None, verify: bool,
-              attempts: int, asr_model: str) -> dict:
+              attempts: int, asr_model: str, max_speed: float = 1.25) -> dict:
     """
-    Synthesize text, retrying with new seeds until speech recognition hears it.
-    Returns the closest attempt: {wav, sr, heard, wer, missed, ok, attempts}.
+    Synthesize text, retrying with new seeds until speech recognition hears it, then lengthen it if its
+    speech is much shorter than duration. Returns the closest attempt:
+    {wav, sr, heard, wer, missed, ok, speech (seconds without edge silence), lengthened, attempts}.
     """
     best, tries = None, 0
     for seed in range(attempts if verify else 1):
         tries += 1
-        wav, sr = synthesizer.synthesize(text, reference, language, target_duration=duration, seed=seed)
-        result = {"wav": wav, "sr": sr, "heard": None, "wer": None, "missed": [], "ok": True}
-        if verify:
-            heard = _transcribe(wav, sr, language, asr_model)
-            error, missed = word_error_rate(text, heard), missed_words(text, heard)
-            result.update(heard=heard, wer=error, missed=missed, ok=error <= MAX_WER and not missed)
+        result = _attempt(synthesizer, text, reference, language, duration, seed, verify, asr_model)
         if best is None or (len(result["missed"]), result["wer"] or 0) < (len(best["missed"]), best["wer"] or 0):
             best = result
         if result["ok"]:
             break
+    best = {**best, "lengthened": False}
+    if best["ok"] and duration and duration >= MIN_CORRECTED_LINE and synthesizer.SUPPORTS_DURATION:
+        tries += _lengthen(best, synthesizer, text, reference, language, duration, verify, attempts, asr_model,
+                           max_speed)
     return {**best, "attempts": tries}
+
+
+def _attempt(synthesizer, text: str, reference: dict, language: str, duration: float | None, seed: int,
+             verify: bool, asr_model: str) -> dict:
+    wav, sr = synthesizer.synthesize(text, reference, language, target_duration=duration, seed=seed)
+    result = {"wav": wav, "sr": sr, "seed": seed, "heard": None, "wer": None, "missed": [], "ok": True,
+              "speech": speech_seconds(wav, sr)}
+    if verify:
+        heard = _transcribe(wav, sr, language, asr_model)
+        # extra words count too: F5 sometimes speaks words of the reference transcript before the line
+        error, missed = word_error_rate(text, heard), missed_words(text, heard) + extra_words(text, heard)
+        result.update(heard=heard, wer=error, missed=missed, ok=error <= MAX_WER and not missed)
+    return result
+
+
+def _lengthen(best: dict, synthesizer, text: str, reference: dict, language: str, duration: float, verify: bool,
+              attempts: int, asr_model: str, max_speed: float) -> int:
+    """
+    If best's speech covers less than TARGET_COVERAGE of duration, generate it again with more room: the
+    missing time times 0.5, then 0.75, then 1, one seed each (starting with best's own), up to attempts
+    takes. Asking for too much at once overshoots (F5 fills a longer request with proportionally less
+    silence) and gives F5 time to speak words from the reference transcript before the line. The first take
+    that is heard correctly and reaches the target replaces best (in place); otherwise the heard take that
+    covers the most without exceeding duration * max_speed does, if it beats best. Returns the extra attempts.
+    """
+    if best["speech"] <= 0 or best["speech"] >= TARGET_COVERAGE * duration:
+        return 0
+    missing = duration - best["speech"]
+    seeds = [best["seed"]] + [s for s in range(attempts) if s != best["seed"]]
+    chosen, tries = None, 0
+    for step, seed in zip(LENGTHEN_STEPS, seeds[:max(attempts, 1)]):
+        tries += 1
+        longer = min(duration + missing * step, duration * MAX_LENGTHEN)
+        take = _attempt(synthesizer, text, reference, language, longer, seed, verify, asr_model)
+        if not take["ok"] or take["speech"] > duration * max_speed:
+            continue
+        if chosen is None or take["speech"] > chosen["speech"]:
+            chosen = take
+        if take["speech"] >= TARGET_COVERAGE * duration:
+            break
+    if chosen and chosen["speech"] > best["speech"]:
+        best.update(chosen, lengthened=True)
+    return tries
+
+
+def speech_seconds(wav: np.ndarray, sr: int) -> float:
+    """Length of the clip without its silent edges, as the fit stage trims them."""
+    from utils.fit import trim_silence
+    return len(trim_silence(wav, sr)) / sr if len(wav) and np.abs(wav).max() > 0 else 0.0
 
 
 def _rephraser(translation_doc: dict, translation_path: str | None):
@@ -163,7 +223,8 @@ def _rephraser(translation_doc: dict, translation_path: str | None):
 
 
 def make_regenerator(translation_doc: dict, translation_path: str, references: dict, backend: str = "f5",
-                     verify: bool = True, attempts: int = 3, asr_model: str = "large-v3-turbo", **_):
+                     verify: bool = True, attempts: int = 3, asr_model: str = "large-v3-turbo",
+                     max_speed: float = 1.25, **_):
     """
     Build the callback the timing-fit step uses when a clip is too long: shorten the line's translation
     (LLM translators only) and synthesize it again for the available time. Returns None when the
@@ -188,7 +249,7 @@ def make_regenerator(translation_doc: dict, translation_path: str, references: d
         before = {k: seg[k] for k in ("translation", "max_chars", "fits")}
         text = shorten(translation_doc, clip["id"], max_chars)
         result = _generate(synthesizer, text, references[clip["speaker"]], language,
-                           window if synthesizer.SUPPORTS_DURATION else None, verify, attempts, asr_model)
+                           window if synthesizer.SUPPORTS_DURATION else None, verify, attempts, asr_model, max_speed)
         if not result["ok"]:
             print(f"⚠️ Segment {clip['id']}: shortened line {text!r} sounds like {result['heard']!r}; "
                   f"keeping the longer one")
@@ -227,6 +288,11 @@ def missed_words(expected: str, heard: str) -> list[str]:
     joined = "".join(hyp)
     return [w for w in _words(expected) if len(w) >= CONTENT_WORD_LENGTH and w not in joined
             and not any(SequenceMatcher(None, w, h).ratio() >= SIMILAR_WORD for h in hyp)]
+
+
+def extra_words(expected: str, heard: str) -> list[str]:
+    """Content words that were heard but are not in the line, marked with a leading +."""
+    return [f"+{w}" for w in missed_words(heard, expected)]
 
 
 def word_error_rate(expected: str, heard: str) -> float:

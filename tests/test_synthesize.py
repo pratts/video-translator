@@ -46,6 +46,9 @@ def test_missed_words_catches_wrong_content_words_only():
     assert syn.missed_words("I'm Mana Kumagai from Sendai", "I'm Manakumagai from Sendai") == []
     assert syn.missed_words("I'm Mana Kumagai", "I'm Mana Kumagae") == []                         # near spelling
     assert syn.missed_words("the freshest fish", "the fish") == ["freshest"]
+    assert syn.extra_words("For fish, Japan has the freshest fish.", "Sakana, for fish Japan has the freshest fish.") \
+        == ["+sakana"]
+    assert syn.extra_words("Easy Japanese is coming to you from Sendai.", "EasyJapanese is coming from Sendai, uh") == []
 
 
 def stub_backend(monkeypatch, heard):
@@ -128,3 +131,59 @@ def test_shortened_line_that_is_not_heard_is_discarded(monkeypatch, tmp_path):
     regenerate = syn.make_regenerator(doc, str(path), {"A": {}}, attempts=2)
     assert regenerate({"id": 0, "speaker": "A"}, 12, 2.5) is None
     assert doc["segments"][0]["translation"] == "Japan's strengths" and not path.exists()
+
+
+def padding_backend(monkeypatch, overhead=0.8):
+    """Like F5: a clip of exactly target_duration, of which overhead seconds are silence at the edges."""
+    backend = types.SimpleNamespace(SAMPLE_RATE=24000, SUPPORTS_DURATION=True, requests=[])
+
+    def synthesize(text, reference, language, target_duration=None, seed=0):
+        backend.requests.append((round(target_duration, 3), seed))
+        sr, pad = 24000, int(overhead / 2 * 24000)
+        speech = 0.3 * np.sin(2 * np.pi * 220 * np.arange(int((target_duration - overhead) * sr)) / sr)
+        return np.concatenate([np.zeros(pad), speech, np.zeros(pad)]).astype(np.float32), sr
+
+    backend.synthesize = synthesize
+    monkeypatch.setattr(syn, "get_synthesizer", lambda name: backend)
+    monkeypatch.setattr(syn, "_transcribe", lambda wav, sr, lang, m: "Japan's strengths")
+    return backend
+
+
+def test_short_speech_is_generated_again_with_more_room(monkeypatch, tmp_path):
+    backend = padding_backend(monkeypatch)
+    clip = syn.synthesize_segments(translation_doc(3.0), {"A": {}}, str(tmp_path))["clips"][0]
+    # speech ~2.3 s of 3 s: half the missing time first (still under 90%), then three quarters, another seed
+    (first, _), (half, seed1), (three_quarters, seed2) = backend.requests
+    assert first == 3.0 < half < three_quarters < 3.8 and (seed1, seed2) == (0, 1)
+    assert clip["lengthened"] and 0.9 <= clip["coverage"] <= 1.25
+    assert clip["attempts"] == 3 and clip["status"] == "ok"
+
+
+def test_lengthening_skips_short_lines_and_never_exceeds_max_speed(monkeypatch, tmp_path):
+    backend = padding_backend(monkeypatch, overhead=0.4)
+    clip = syn.synthesize_segments(translation_doc(0.9), {"A": {}}, str(tmp_path))["clips"][0]
+    assert len(backend.requests) == 1 and not clip["lengthened"]          # under 1 s: left as is
+
+    # a backend whose speech always overshoots: longer takes are generated (one per seed) but not used
+    backend = padding_backend(monkeypatch, overhead=1.0)
+    real = backend.synthesize
+    backend.synthesize = lambda text, ref, lang, target_duration=None, seed=0: real(
+        text, ref, lang, target_duration * (1 if target_duration == 3.0 else 1.8), seed)
+    clip = syn.synthesize_segments(translation_doc(3.0), {"A": {}}, str(tmp_path), max_speed=1.25)["clips"][0]
+    assert len(backend.requests) == 4 and not clip["lengthened"] and clip["coverage"] < 0.9
+
+
+def test_lengthened_take_must_still_be_heard(monkeypatch, tmp_path):
+    backend = padding_backend(monkeypatch)
+    # longer takes are misheard with seed 0 and heard with seed 1
+    monkeypatch.setattr(syn, "_transcribe", lambda wav, sr, lang, m: "Japan's strengths"
+                        if len(wav) <= 3 * sr or backend.requests[-1][1] == 1 else "Japan's drinks")
+    clip = syn.synthesize_segments(translation_doc(3.0), {"A": {}}, str(tmp_path))["clips"][0]
+    assert [seed for _, seed in backend.requests] == [0, 0, 1]
+    assert clip["lengthened"] and clip["attempts"] == 3 and clip["coverage"] >= 0.9
+
+    backend.requests.clear()
+    monkeypatch.setattr(syn, "_transcribe", lambda wav, sr, lang, m: "Japan's strengths" if len(wav) <= 3 * sr
+                        else "Japan's drinks")
+    clip = syn.synthesize_segments(translation_doc(3.0), {"A": {}}, str(tmp_path))["clips"][0]
+    assert len(backend.requests) == 4 and not clip["lengthened"] and clip["heard"] == "Japan's strengths"
