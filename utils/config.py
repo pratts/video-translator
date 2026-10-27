@@ -11,6 +11,8 @@ SETTINGS = {
     # separation
     "DEMUCS_MODEL": (str, "htdemucs_ft"),
     "DEMUCS_DEVICE": (str, ""),
+    "DEMUCS_SHIFTS": (int, 1),
+    "SEED": (int, 0),                      # makes separation repeatable
     # transcription
     "ASR_BACKEND": (str, "whisperx"),
     "WHISPER_MODEL": (str, "large-v3-turbo"),

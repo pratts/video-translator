@@ -74,8 +74,9 @@ def extract(run: Run):
 
 def separate(run: Run):
     from utils.separate import separate_vocals
-    separate_vocals(run.source_audio, run.vocals, run.background, model=run.config["DEMUCS_MODEL"],
-                    device=run.config["DEMUCS_DEVICE"] or None)
+    c = run.config
+    separate_vocals(run.source_audio, run.vocals, run.background, model=c["DEMUCS_MODEL"],
+                    device=c["DEMUCS_DEVICE"] or None, shifts=c["DEMUCS_SHIFTS"], seed=c["SEED"])
 
 
 def transcribe_stage(run: Run):
@@ -149,7 +150,7 @@ STAGES = [
     Stage("extract", "reading video metadata and extracting the audio", extract,
           lambda r: [r.metadata, r.source_audio]),
     Stage("separate", "separating vocals from background", separate,
-          lambda r: [r.vocals, r.background], ["DEMUCS_MODEL"]),
+          lambda r: [r.vocals, r.background], ["DEMUCS_MODEL", "DEMUCS_SHIFTS", "SEED"]),
     Stage("transcribe", "transcribing the vocals", transcribe_stage,
           lambda r: [r.transcript], ["ASR_BACKEND", "WHISPER_MODEL", "SOURCE_LANGUAGE"]),
     Stage("diarize", "finding who speaks when", diarize_stage,

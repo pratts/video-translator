@@ -45,6 +45,8 @@ Each video gets a work folder, `work/<video name>/`, and every finished stage is
 - after changing a setting, only the stage that uses it and the stages after it run again (e.g. changing `MIX_DUCK_DB` re-runs only `mix` and `mux`)
 - stages from `translate` on are kept per translator, so switching between `gpt`, `google` and `nllb` reuses each one's earlier results
 
+Runs are repeatable: the same video and settings give the same separation, transcript, segments and voice clips (`seed` fixes Demucs' random shifts; F5-TTS is seeded per attempt). Only the `gpt` translator can word lines differently between runs.
+
 ```bash
 python convert.py my-video.mp4 --from-stage translate    # re-run translation and everything after it
 python convert.py my-video.mp4 --to-stage segment        # stop after building the segments (e.g. to review them)
