@@ -3,6 +3,8 @@ from functools import cache
 
 import numpy as np
 
+from utils.output import quiet
+
 SAMPLE_RATE = 24000
 # generates speech of a requested length (target_duration)
 SUPPORTS_DURATION = True
@@ -19,7 +21,8 @@ def _model():
         "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     name = os.getenv("F5_MODEL") or "F5TTS_v1_Base"
     print(f"🔍 Loading F5-TTS ({name}) on {device}...")
-    return F5TTS(model=name, device=device)
+    with quiet():  # f5-tts print()s its vocab, model paths and the Vocos download
+        return F5TTS(model=name, device=device)
 
 
 def synthesize(text: str, reference: dict, language: str, target_duration: float | None = None,
@@ -36,8 +39,9 @@ def synthesize(text: str, reference: dict, language: str, target_duration: float
     if target_duration:
         fix_duration = _reference_seconds(reference["audio"]) + max(target_duration, MIN_DURATION)
     ref_text = _reference_text(reference["text"], reference.get("language"))
-    wav, sr, _ = model.infer(ref_file=reference["audio"], ref_text=ref_text, gen_text=text,
-                             fix_duration=fix_duration, seed=seed, show_info=lambda *a: None, progress=None)
+    with quiet():  # infer() print()s the reference and generated text of every call
+        wav, sr, _ = model.infer(ref_file=reference["audio"], ref_text=ref_text, gen_text=text,
+                                 fix_duration=fix_duration, seed=seed, show_info=lambda *a: None, progress=None)
     return np.asarray(wav, dtype=np.float32), sr
 
 
