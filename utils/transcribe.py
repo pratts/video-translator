@@ -17,9 +17,11 @@ MLX_MODELS = {
 # === Step 2: Transcribe vocals with word-level timestamps ===
 def transcribe(audio_path: str, transcript_output_path: str, srt_output_path: str,
                backend: str = "whisperx", model_name: str = "large-v3-turbo",
-               language: str | None = None, device: str | None = None) -> dict:
+               language: str | None = None, device: str | None = None, glossary: dict | None = None) -> dict:
     """
     Transcribe speech and align every word to the audio.
+    The glossary's source terms (names, places) are given to Whisper as its initial prompt, so it spells them
+    as written there (熊谷真奈 rather than a same-sounding 熊谷モナ).
     - backend "whisperx": faster-whisper + VAD (CUDA or CPU)
     - backend "mlx": mlx-whisper (fast on Apple Silicon)
     Both are followed by WhisperX wav2vec2 forced alignment for accurate word timestamps.
@@ -28,11 +30,13 @@ def transcribe(audio_path: str, transcript_output_path: str, srt_output_path: st
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     audio = whisperx.load_audio(audio_path, sr=ASR_SAMPLE_RATE)
 
-    print(f"🎙️ Transcribing with {backend} ({model_name}) on {device if backend == 'whisperx' else 'mlx'}...")
+    prompt = asr_prompt(glossary)
+    print(f"🎙️ Transcribing with {backend} ({model_name}) on {device if backend == 'whisperx' else 'mlx'}"
+          f"{f', prompt: {prompt}' if prompt else ''}...")
     if backend == "whisperx":
-        result = _transcribe_whisperx(audio, model_name, language, device)
+        result = _transcribe_whisperx(audio, model_name, language, device, prompt)
     elif backend == "mlx":
-        result = _transcribe_mlx(audio, model_name, language)
+        result = _transcribe_mlx(audio, model_name, language, prompt)
     else:
         raise ValueError(f"Unknown ASR backend: {backend}. Use 'whisperx' or 'mlx'.")
 
@@ -62,19 +66,33 @@ def transcribe(audio_path: str, transcript_output_path: str, srt_output_path: st
     return transcript
 
 
-def _transcribe_whisperx(audio, model_name: str, language: str | None, device: str) -> dict:
+def asr_prompt(glossary: dict | None) -> str | None:
+    """
+    Whisper's initial prompt: the glossary's source terms as a short list. Whisper conditions on the prompt as if
+    it were the preceding text, so it prefers these spellings. Terms are joined with 、 when they are Japanese
+    or Chinese, so the prompt reads like text in that language rather than steering it towards another one.
+    """
+    terms = [term.strip() for term in (glossary or {}) if term.strip()]
+    if not terms:
+        return None
+    cjk = any("\u3040" <= c <= "\u30ff" or "\u3400" <= c <= "\u9fff" for term in terms for c in term)
+    return ("、".join(terms) + "。") if cjk else (", ".join(terms) + ".")
+
+
+def _transcribe_whisperx(audio, model_name: str, language: str | None, device: str, prompt: str | None) -> dict:
     # ctranslate2 has no Apple GPU support, so use int8 on CPU and float16 on CUDA
     compute_type = "float16" if device == "cuda" else "int8"
-    model = whisperx.load_model(model_name, device, compute_type=compute_type, language=language)
+    model = whisperx.load_model(model_name, device, compute_type=compute_type, language=language,
+                                asr_options={"initial_prompt": prompt})
     return model.transcribe(audio, batch_size=16 if device == "cuda" else 4, language=language)
 
 
-def _transcribe_mlx(audio, model_name: str, language: str | None) -> dict:
+def _transcribe_mlx(audio, model_name: str, language: str | None, prompt: str | None) -> dict:
     import mlx_whisper  # only available on Apple Silicon
 
     repo = MLX_MODELS.get(model_name, model_name)
     result = mlx_whisper.transcribe(audio, path_or_hf_repo=repo, language=language,
-                                    condition_on_previous_text=False)
+                                    condition_on_previous_text=False, initial_prompt=prompt)
     segments = [{"start": s["start"], "end": s["end"], "text": s["text"]}
                 for s in result["segments"] if s["text"].strip()]
     return {"segments": segments, "language": result["language"]}
