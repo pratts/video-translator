@@ -37,3 +37,48 @@ def test_japanese_punctuation_attaches_and_long_segments_split():
     assert all(not s["text"].startswith("、") for s in doc["segments"])
     assert all(s["duration"] <= 1.5 for s in doc["segments"])
     assert "".join(s["text"] for s in doc["segments"]) == "今日は、いい天気ですね"
+
+
+def chars(text, start=0.0, step=0.2):
+    return [(c, round(start + i * step, 3), round(start + (i + 1) * step, 3)) for i, c in enumerate(text)]
+
+
+def test_japanese_speaker_change_never_splits_a_word():
+    # the diarization boundary (2.1 s) falls inside けど (2.0-2.4); the alignment is per character
+    t = transcript([words(*chars("お聞きしてるんですけど日本のいいところ"))], language="ja")
+    turns = [{"start": 0.0, "end": 2.1, "speaker": "HOST"}, {"start": 2.1, "end": 4.0, "speaker": "GUEST"}]
+    doc = build_segments(t, turns, min_duration=0.5)
+    assert [(s["speaker"], s["text"]) for s in doc["segments"]] == [
+        ("HOST", "お聞きしてるんですけど"), ("GUEST", "日本のいいところ")]
+
+
+def test_japanese_boundary_inside_a_noun_keeps_the_noun_together():
+    t = transcript([words(*chars("お聞きしてるんですけど日本のいいところ"))], language="ja")
+    turns = [{"start": 0.0, "end": 2.3, "speaker": "HOST"}, {"start": 2.3, "end": 4.0, "speaker": "GUEST"}]
+    texts = [s["text"] for s in build_segments(t, turns, min_duration=0.5)["segments"]]
+    assert all(not s.startswith(("ど", "本")) for s in texts)
+    assert "".join(texts) == "お聞きしてるんですけど日本のいいところ"
+
+
+def test_weakly_supported_fragment_is_absorbed():
+    # "two" (0.7 s) is given to B by only 30% of its time; the rest of it is not covered at all
+    t = transcript([words(("one", 0.0, 1.0), ("two", 1.0, 1.7), ("three", 1.7, 3.0))])
+    turns = [{"start": 0.0, "end": 1.0, "speaker": "A"}, {"start": 1.0, "end": 1.21, "speaker": "B"},
+             {"start": 1.7, "end": 3.0, "speaker": "A"}]
+    assert build_segments(t, turns)["speakers"] == ["A"]
+
+
+def test_well_supported_short_turn_is_kept():
+    t = transcript([words(("Really?", 0.0, 1.5), ("Yes.", 1.6, 2.4), ("Great.", 2.5, 4.0))])
+    turns = [{"start": 0.0, "end": 1.5, "speaker": "A"}, {"start": 1.6, "end": 2.4, "speaker": "B"},
+             {"start": 2.5, "end": 4.0, "speaker": "A"}]
+    doc = build_segments(t, turns, min_duration=0.5)
+    assert [s["speaker"] for s in doc["segments"]] == ["A", "B", "A"]
+
+
+def test_chinese_speaker_change_never_splits_a_word():
+    # the diarization boundary (0.9 s) falls inside 日本 (0.8-1.2)
+    t = transcript([words(*chars("你觉得日本好在哪里"))], language="zh")
+    turns = [{"start": 0.0, "end": 0.9, "speaker": "A"}, {"start": 0.9, "end": 2.0, "speaker": "B"}]
+    texts = [s["text"] for s in build_segments(t, turns, min_duration=0.3, min_turn=0.1)["segments"]]
+    assert not any(t.startswith("本") or t.endswith("日") for t in texts)
