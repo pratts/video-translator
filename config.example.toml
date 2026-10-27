@@ -42,6 +42,9 @@ translation_device = ""
 
 # Voice cloning: backend and model; check every clip with speech recognition and retry up to tts_attempts times
 tts_backend = "f5"
+# Optional folder of manual voice references: <speaker>.wav (5-12 s of clean speech, e.g. SPEAKER_00.wav; speaker
+# names are in work/<video>/segments.srt) and optionally <speaker>.txt with what is said in it (else transcribed)
+voice_references_dir = ""
 f5_model = "F5TTS_v1_Base"
 tts_device = ""
 tts_verify = true
