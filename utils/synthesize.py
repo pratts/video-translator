@@ -279,6 +279,11 @@ def _words(text: str) -> list[str]:
     return re.sub(r"[^\w' ]", " ", text.lower()).split()
 
 
+def _same_word(expected: str, heard: str) -> bool:
+    return expected == heard or (len(expected) >= CONTENT_WORD_LENGTH
+                                 and SequenceMatcher(None, expected, heard).ratio() >= SIMILAR_WORD)
+
+
 def missed_words(expected: str, heard: str) -> list[str]:
     """
     Content words of expected that were not heard: missing, or heard as a clearly different word
@@ -296,7 +301,11 @@ def extra_words(expected: str, heard: str) -> list[str]:
 
 
 def word_error_rate(expected: str, heard: str) -> float:
-    """Edit distance between word sequences, divided by the number of expected words."""
+    """
+    Edit distance between word sequences, divided by the number of expected words. A content word heard with a
+    similar spelling ("Mana" as "Anna", "Kumagai" as "Kumigai") counts as heard, as in missed_words: names are
+    often transcribed that way, and one such word would otherwise fail a short line.
+    """
     ref, hyp = _words(expected), _words(heard)
     if "".join(ref) == "".join(hyp):  # same words, spaced differently ("Mana Kumagai" heard as "Manakumagai")
         return 0.0
@@ -304,5 +313,6 @@ def word_error_rate(expected: str, heard: str) -> float:
     for i in range(1, len(ref) + 1):
         diagonal, row[0] = row[0], i
         for j in range(1, len(hyp) + 1):
-            diagonal, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, diagonal + (ref[i - 1] != hyp[j - 1]))
+            diagonal, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1,
+                                           diagonal + (not _same_word(ref[i - 1], hyp[j - 1])))
     return row[len(hyp)] / max(len(ref), 1)

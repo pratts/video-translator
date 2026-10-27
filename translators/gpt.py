@@ -165,7 +165,8 @@ def rephrase(item: dict, translation: str, heard: str, max_chars: int, source_la
         Rewrite it as natural spoken {target_language} with the same meaning as "original" ({source_language}),
         using common, easy-to-pronounce words in place of the ones that were misheard, written out as they
         are spoken (no abbreviations, symbols or digits). At most {max_chars} characters.
-        Use the glossary for names and terms.
+        Keep names and glossary terms exactly as they are written in "translation", even if they were misheard:
+        never respell a name phonetically (not "Mah nah" for "Mana"). Only reword the other words.
     """).strip()
     payload = {"original": item["text"], "translation": translation, "heard": heard, "speaker": item["speaker"],
                "max_chars": max_chars, "video_context": context or "", "glossary": glossary or {}}
