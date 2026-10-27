@@ -60,6 +60,9 @@ class Run:
         return dict(backend=c["TTS_BACKEND"], verify=c["TTS_VERIFY"], attempts=c["TTS_ATTEMPTS"],
                     asr_model=c["WHISPER_MODEL"])
 
+    def clips_doc(self) -> str:
+        return os.path.join(self.clips_dir, "clips.json")
+
 
 # === Stages ===
 def extract(run: Run):
@@ -110,7 +113,8 @@ def translate(run: Run):
 
 def tts(run: Run):
     from utils.synthesize import synthesize_segments
-    synthesize_segments(read_json(run.translation), read_json(run.references), run.clips_dir, **run.tts_options())
+    synthesize_segments(read_json(run.translation), read_json(run.references), run.clips_dir, **run.tts_options(),
+                        on_mismatch=run.config["TTS_ON_MISMATCH"], translation_path=run.translation)
 
 
 def fit(run: Run):
@@ -119,7 +123,7 @@ def fit(run: Run):
     c = run.config
     regenerate = make_regenerator(read_json(run.translation), run.translation, read_json(run.references),
                                   **run.tts_options())
-    fit_clips(read_json(os.path.join(run.clips_dir, "clips.json")), run.fitted_dir, video_duration=run.duration(),
+    fit_clips(read_json(run.clips_doc()), run.fitted_dir, video_duration=run.duration(),
               min_speed=c["FIT_MIN_SPEED"], max_speed=c["FIT_MAX_SPEED"], hard_max_speed=c["FIT_HARD_MAX_SPEED"],
               max_borrow=c["FIT_MAX_BORROW"], max_retries=c["FIT_MAX_RETRANSLATIONS"], regenerate=regenerate)
 
@@ -155,8 +159,9 @@ STAGES = [
           ["TRANSLATOR", "TARGET_LANGUAGE", "GLOSSARY_FILE", "VIDEO_CONTEXT", "LLM_MODEL", "LLM_BASE_URL",
            "NLLB_MODEL"], per_translator=True),
     Stage("tts", "speaking each segment in its speaker's cloned voice", tts,
-          lambda r: [os.path.join(r.clips_dir, "clips.json")],
-          ["TTS_BACKEND", "F5_MODEL", "TTS_VERIFY", "TTS_ATTEMPTS", "WHISPER_MODEL"], per_translator=True),
+          lambda r: [r.clips_doc()],
+          ["TTS_BACKEND", "F5_MODEL", "TTS_VERIFY", "TTS_ATTEMPTS", "TTS_ON_MISMATCH", "WHISPER_MODEL"],
+          per_translator=True),
     Stage("fit", "fitting each clip into its time slot", fit,
           lambda r: [os.path.join(r.fitted_dir, "timing_report.json")],
           ["FIT_MIN_SPEED", "FIT_MAX_SPEED", "FIT_HARD_MAX_SPEED", "FIT_MAX_BORROW", "FIT_MAX_RETRANSLATIONS"],
@@ -209,6 +214,13 @@ def main(argv: list[str] | None = None):
     pipeline = Pipeline(STAGES, run.work_dir, config["TRANSLATOR"])
     pipeline.run(run, config, from_stage=args.from_stage, to_stage=args.to_stage, force=args.force,
                  inputs_id=file_id(run.video))
+    if os.path.exists(run.clips_doc()):
+        from utils.synthesize import fallback_summary
+        lines = fallback_summary(read_json(run.clips_doc()))
+        if lines:
+            print(f"⚠️ {len(lines)} lines were rephrased or not dubbed:")
+            for line in lines:
+                print(f"   - {line}")
     if not args.to_stage or args.to_stage == STAGES[-1].name:
         print(f"🎉 Done: {output_path_for(run.video, config['TARGET_LANGUAGE'], run.output_dir)}")
 

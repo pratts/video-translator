@@ -22,6 +22,8 @@ def mix_dub(timing_report: dict, vocals_path: str, background_path: str, duratio
       (per segment when long enough to measure, otherwise the speaker's average)
     - the background stays at its original level, and is lowered by duck_db only while dubbed speech plays,
       with attack/release ramps; sections without speech are untouched
+    - lines the TTS could not say keep the original speaker's voice (status fallback_original), unducked and
+      at its original level, or stay silent (fallback_silence)
     - optionally, original vocal sounds outside dubbed lines (laughs, breaths) are kept at keep_vocals_db
     - the mix is normalized to target_lufs with one gain; peaks above true_peak dBTP are limited
     Writes <output_dir>/dubbed_audio.wav, speech.wav (dubbed speech only) and mix.json.
@@ -32,8 +34,23 @@ def mix_dub(timing_report: dict, vocals_path: str, background_path: str, duratio
     meter = pyloudnorm.Meter(sr)
     vocals_mono = vocals.mean(axis=1)
 
+    # original speech put back where the dub fell back to it
+    restored = np.zeros(length, dtype=np.float32)
+    report = []
+    for clip in timing_report["clips"]:
+        status = clip.get("status", "ok")
+        if status.startswith("fallback_"):
+            start = int(round(clip["start"] * sr))
+            end = min(length, int(round(clip["end"] * sr)))
+            if status == "fallback_original" and end > start:
+                restored[start:end] = 1.0
+            report.append({"id": clip["id"], "speaker": clip["speaker"], "start": clip["start"],
+                           "end": clip["end"], "status": status})
+
     clips = []
     for clip in timing_report["clips"]:
+        if not clip.get("audio"):
+            continue
         wav, clip_sr = sf.read(clip["audio"], dtype="float32")
         if wav.ndim > 1:
             wav = wav.mean(axis=1)
@@ -46,7 +63,7 @@ def mix_dub(timing_report: dict, vocals_path: str, background_path: str, duratio
 
     # speaker averages, used for lines too short to measure on their own
     speaker_gain = {}
-    for speaker in {c["clip"]["speaker"] for c in clips}:
+    for speaker in sorted({c["clip"]["speaker"] for c in clips}):
         own = [c for c in clips if c["clip"]["speaker"] == speaker]
         dub = _loudness(meter, np.concatenate([c["wav"] for c in own]))
         original = _loudness(meter, np.concatenate([vocals_mono[c["start"]:c["start"] + len(c["wav"])] for c in own]))
@@ -55,7 +72,6 @@ def mix_dub(timing_report: dict, vocals_path: str, background_path: str, duratio
     speech = np.zeros(length, dtype=np.float32)
     envelope = np.ones(length, dtype=np.float32)
     duck = 10 ** (duck_db / 20)
-    report = []
     for c in clips:
         clip, wav, start = c["clip"], c["wav"], c["start"]
         if c["dub_lufs"] is not None and c["original_lufs"] is not None:
@@ -66,14 +82,17 @@ def mix_dub(timing_report: dict, vocals_path: str, background_path: str, duratio
         speech[start:start + len(wav)] += wav * 10 ** (gain_db / 20)
         _duck(envelope, start, start + len(wav), int(attack * sr), int(release * sr), duck)
         report.append({"id": clip["id"], "speaker": clip["speaker"], "start": clip["start"],
-                       "end": round((start + len(wav)) / sr, 3), "gain_db": round(gain_db, 2),
+                       "end": round((start + len(wav)) / sr, 3), "status": clip.get("status", "ok"),
+                       "gain_db": round(gain_db, 2),
                        "original_lufs": _round(c["original_lufs"]), "dub_lufs": _round(c["dub_lufs"])})
 
-    mix = background * envelope[:, None] + speech[:, None]
+    # short ramps at the edges of restored speech, so it does not click
+    restored = uniform_filter1d(restored, max(1, int(fade * sr)))
+    mix = background * envelope[:, None] + speech[:, None] + vocals * restored[:, None]
     if keep_vocals_db is not None:
-        # 0 under dubbed lines (same ramps as the ducking), 1 elsewhere
+        # 0 under dubbed lines (same ramps as the ducking) and restored original speech, 1 elsewhere
         outside = (envelope - duck) / (1 - duck) if duck < 1 else (envelope >= 1).astype(np.float32)
-        mix += vocals * (outside * 10 ** (keep_vocals_db / 20))[:, None]
+        mix += vocals * (np.minimum(outside, 1 - restored) * 10 ** (keep_vocals_db / 20))[:, None]
 
     os.makedirs(output_dir, exist_ok=True)
     speech_path = os.path.join(output_dir, "speech.wav")
@@ -96,7 +115,7 @@ def mix_dub(timing_report: dict, vocals_path: str, background_path: str, duratio
         "duck_db": duck_db,
         "keep_vocals_db": keep_vocals_db,
         "speaker_gain_db": {k: round(v, 2) for k, v in speaker_gain.items()},
-        "clips": report,
+        "clips": sorted(report, key=lambda r: r["id"]),
     }
     with open(os.path.join(output_dir, "mix.json"), "w", encoding="utf-8") as f:
         json.dump(document, f, ensure_ascii=False, indent=2)

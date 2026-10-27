@@ -34,6 +34,7 @@ SETTINGS = {
     "TTS_DEVICE": (str, ""),
     "TTS_VERIFY": (bool, True),
     "TTS_ATTEMPTS": (int, 3),
+    "TTS_ON_MISMATCH": (str, "auto"),      # auto | original | silence | keep
     # timing fit
     "FIT_MIN_SPEED": (float, 0.9),
     "FIT_MAX_SPEED": (float, 1.25),
@@ -82,6 +83,7 @@ def load_config(config_path: str | None = None, overrides: dict | None = None) -
 
     config["TRANSLATOR"] = config["TRANSLATOR"].lower()
     config["TTS_BACKEND"] = config["TTS_BACKEND"].lower()
+    config["TTS_ON_MISMATCH"] = config["TTS_ON_MISMATCH"].lower()
     for name in BACKEND_SETTINGS:
         if config[name]:
             os.environ[name] = str(config[name])

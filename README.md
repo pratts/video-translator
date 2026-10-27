@@ -75,6 +75,9 @@ Run `python convert.py --help` for all options.
 
 `glossary_file` is an optional JSON file of names and terms that must be translated consistently, e.g. `{"熊谷真奈": "Mana Kumagai"}`.
 
+### Lines the voice can't say
+Every clip is transcribed again and accepted only when it says its line: at most 20% of the words differ and no content word is missing or heard as a different word. A failing line is generated again with other seeds (`tts_attempts`), then rephrased once in plainer words (`gpt` only). If it still fails, `tts_on_mismatch` decides: `original` keeps the original speaker's voice for that line, `silence` drops it, `keep` uses the closest attempt, and `auto` (default) keeps the original voice for lines up to 1 s (short replies like はい) and drops longer ones. The run ends with a list of the lines that were rephrased or not dubbed; `clips.json` has the details.
+
 ### Output video
 The video stream is copied without re-encoding and the dubbed audio is the default track. The source audio (copied as is) and original-language subtitles are added as extra tracks, and all tracks are tagged with their language. MP4 players show the first subtitle track by default (the MP4 muxer always enables it); in MKV, subtitles are off by default.
 
