@@ -11,7 +11,12 @@ def test_word_error_rate():
     assert syn.word_error_rate("Hello, world!", "hello world") == 0.0
     assert syn.word_error_rate("EasyJapanese is here", "Easy Japanese is here.") == 0.0
     assert syn.word_error_rate("I'm Mana Kumagai.", "I'm Manakumagai.") == 0.0
-    assert syn.word_error_rate("Japan's best parts", "Japan's best part?") == 1 / 3
+    assert syn.word_error_rate("Japan's best parts", "Japan's best part?") == 0.0       # near spelling
+    assert syn.word_error_rate("Hi, I'm Mana Kumagai.", "Hi, I'm Anna Kumagai.") == 0.0
+    assert syn.word_error_rate("Hi, I'm Mana Kumagai.", "Hi, I am a Nakuma guy.") > syn.MAX_WER
+    assert syn.word_error_rate("What do you think are Japan's strengths?",
+                               "What do you think are Japan's drinks?") == 1 / 7      # still an error
+    assert syn.word_error_rate("I am here", "I an here") == 1 / 3                     # short words: exact
     assert syn.word_error_rate("one two", "") == 1.0
 
 
@@ -187,3 +192,20 @@ def test_lengthened_take_must_still_be_heard(monkeypatch, tmp_path):
                         else "Japan's drinks")
     clip = syn.synthesize_segments(translation_doc(3.0), {"A": {}}, str(tmp_path))["clips"][0]
     assert len(backend.requests) == 4 and not clip["lengthened"] and clip["heard"] == "Japan's strengths"
+
+
+def test_near_miss_name_passes_the_clip_check(monkeypatch, tmp_path):
+    stub_backend(monkeypatch, lambda text: "Hi, I'm Anna Kumagai.")
+    doc = translation_doc(2.2)
+    doc["segments"][0]["translation"] = "Hi, I'm Mana Kumagai."
+    clip = syn.synthesize_segments(doc, {"A": {}}, str(tmp_path), attempts=3)["clips"][0]
+    assert clip["status"] == "ok" and clip["attempts"] == 1 and clip["wer"] == 0.0
+
+
+def test_rephrase_asks_to_keep_names(monkeypatch):
+    import translators.gpt as gpt
+    sent = {}
+    monkeypatch.setattr(gpt, "_complete", lambda system, payload, schema: sent.update(system=system) or {"text": "x"})
+    gpt.rephrase({"text": "熊谷真奈です", "speaker": "A"}, "Hi, I'm Mana Kumagai.", "Hi, I'm Anna Kumagai.", 30,
+                 "ja", "en", glossary={"熊谷真奈": "Mana Kumagai"})
+    assert "Keep names and glossary terms exactly" in sent["system"] and "never respell" in sent["system"]
