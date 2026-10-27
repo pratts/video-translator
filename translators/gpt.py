@@ -154,3 +154,20 @@ def shorten(item: dict, translation: str, max_chars: int, source_language: str, 
             best = text
         payload["translation"] = best
     return best
+
+
+def rephrase(item: dict, translation: str, heard: str, max_chars: int, source_language: str,
+             target_language: str, glossary: dict | None = None, context: str | None = None) -> str:
+    """Reword a dubbed line that the voice synthesizer could not pronounce clearly, keeping its meaning."""
+    system = dedent(f"""
+        You fix dubbed {target_language} dialogue for a text-to-speech voice.
+        The voice could not say "translation" clearly: speech recognition heard "heard" instead.
+        Rewrite it as natural spoken {target_language} with the same meaning as "original" ({source_language}),
+        using common, easy-to-pronounce words in place of the ones that were misheard, written out as they
+        are spoken (no abbreviations, symbols or digits). At most {max_chars} characters.
+        Use the glossary for names and terms.
+    """).strip()
+    payload = {"original": item["text"], "translation": translation, "heard": heard, "speaker": item["speaker"],
+               "max_chars": max_chars, "video_context": context or "", "glossary": glossary or {}}
+    text = _complete(system, payload, SHORTEN_SCHEMA)["text"].strip()
+    return text or translation

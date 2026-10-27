@@ -24,8 +24,9 @@ def fit_clips(clips_doc: dict, output_dir: str, video_duration: float | None = N
          up to max_borrow seconds of the silence after it (always leaving min_gap before the next line)
       4. if it still does not fit, ask regenerate(clip, max_chars, window) for a shorter line, up to max_retries
       5. last resort: speed it up as much as needed, with a warning above hard_max_speed
-    Clips keep their start time, so they stay in sync with the speaker on screen. Writes
-    <output_dir>/seg_0000.wav and timing_report.json.
+    Clips keep their start time, so they stay in sync with the speaker on screen. Lines the TTS could not
+    say (status fallback_original / fallback_silence) get no dubbed audio; the status is passed on to the mix.
+    Writes <output_dir>/seg_0000.wav and timing_report.json.
     """
     os.makedirs(output_dir, exist_ok=True)
     clips = clips_doc["clips"]
@@ -35,6 +36,14 @@ def fit_clips(clips_doc: dict, output_dir: str, video_duration: float | None = N
         slot = clip["duration"]
         free = (next_start - clip["start"] - slot - min_gap) if next_start is not None else max_borrow
         window = slot + max(0.0, min(max_borrow, free))
+        status = clip.get("status", "ok")
+        if status.startswith("fallback_"):
+            # the original speech keeps its own slot; a silent line takes no time
+            end = clip["start"] + (slot if status == "fallback_original" else 0.0)
+            report.append({"id": clip["id"], "speaker": clip["speaker"], "start": clip["start"],
+                           "end": round(end, 3), "slot": slot, "window": round(window, 3), "status": status,
+                           "text": clip["text"], "audio": None, "warning": None})
+            continue
 
         wav, sr = sf.read(clip["audio"], dtype="float32")
         text, retries = clip["text"], 0
@@ -69,6 +78,7 @@ def fit_clips(clips_doc: dict, output_dir: str, video_duration: float | None = N
             "id": clip["id"],
             "speaker": clip["speaker"],
             "start": clip["start"],
+            "status": status,
             "end": round(clip["start"] + fitted, 3),
             "slot": slot,
             "window": round(window, 3),
@@ -89,11 +99,13 @@ def fit_clips(clips_doc: dict, output_dir: str, video_duration: float | None = N
     with open(os.path.join(output_dir, "timing_report.json"), "w", encoding="utf-8") as f:
         json.dump(document, f, ensure_ascii=False, indent=2)
 
-    stretched = sum(abs(r["speed"] - 1) > 0.01 for r in report)
-    borrowed = sum(r["gap_used"] > 0 for r in report)
-    print(f"✅ Fitted {len(report)} clips into {output_dir} ({stretched} time-stretched, {borrowed} using the "
-          f"following silence, {sum(r['retranslations'] for r in report)} retranslations, "
-          f"{len(overlaps)} overlaps)")
+    fitted = [r for r in report if r["audio"]]
+    stretched = sum(abs(r["speed"] - 1) > 0.01 for r in fitted)
+    borrowed = sum(r["gap_used"] > 0 for r in fitted)
+    fallbacks = len(report) - len(fitted)
+    print(f"✅ Fitted {len(fitted)} clips into {output_dir} ({stretched} time-stretched, {borrowed} using the "
+          f"following silence, {sum(r['retranslations'] for r in fitted)} retranslations, "
+          f"{len(overlaps)} overlaps{f', {fallbacks} not dubbed' if fallbacks else ''})")
     return document
 
 

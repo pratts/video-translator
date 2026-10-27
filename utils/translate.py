@@ -117,6 +117,24 @@ def shorten(document: dict, segment_id: int, max_chars: int, translator: str | N
     return text
 
 
+def rephrase(document: dict, segment_id: int, heard: str, translator: str | None = None) -> str:
+    """
+    Rewrite one segment's translation in plainer words the TTS can pronounce (for the TTS stage, when no
+    attempt at the line was heard correctly). Needs an LLM backend; updates the document in place.
+    """
+    backend = get_translator(translator or document["translator"])
+    if not hasattr(backend, "rephrase"):
+        raise NotImplementedError(f"Translator '{backend.__name__}' cannot rephrase lines; use TRANSLATOR=gpt")
+    seg = next(s for s in document["segments"] if s["id"] == segment_id)
+    item = {"id": seg["id"], "speaker": seg["speaker"], "duration": seg["duration"], "text": seg["source_text"]}
+    text = backend.rephrase(item, seg["translation"], heard, seg["max_chars"], document["source_language"],
+                            document["target_language"], glossary=document.get("glossary"),
+                            context=document.get("context"))
+    seg["translation"] = text
+    seg["fits"] = len(text) <= seg["max_chars"]
+    return text
+
+
 def save_translation(document: dict, json_output_path: str, raw_srt_path: str, polished_srt_path: str):
     os.makedirs(os.path.dirname(json_output_path), exist_ok=True)
     with open(json_output_path, "w", encoding="utf-8") as f:

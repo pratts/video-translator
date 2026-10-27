@@ -37,6 +37,10 @@ f5_model = "F5TTS_v1_Base"
 tts_device = ""
 tts_verify = true
 tts_attempts = 3
+# A line no attempt says correctly is rephrased once (gpt translator only), then gets this fallback:
+# "original" keeps the original speaker's audio, "silence" drops the line, "keep" uses the closest attempt,
+# "auto" = original for lines up to 1 s (often short replies like はい), silence for longer ones
+tts_on_mismatch = "auto"
 
 # Fitting clips into their time slots: playback speed range (below 1 = slower), hard limit before a warning,
 # seconds of following silence a clip may use, and how often an LLM translator may shorten a line

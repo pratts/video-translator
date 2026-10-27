@@ -53,3 +53,14 @@ def test_too_long_clip_is_shortened_by_regenerate(tone, tmp_path):
     assert calls[0][0] < len("a very long line indeed")
     assert doc["clips"][0]["retranslations"] == 1 and doc["clips"][0]["text"] == "short"
     assert doc["clips"][0]["warning"] is None
+
+
+def test_fallback_clips_get_no_dubbed_audio(tone, tmp_path):
+    clips = {"clips": [dict(clip(0, 0.0, 1.0, tone(1.0)), status="fallback_original"),
+                       dict(clip(1, 2.0, 1.0, tone(1.0)), status="fallback_silence"),
+                       dict(clip(2, 4.0, 1.0, tone(0.9)), status="ok")]}
+    report = fit_clips(clips, str(tmp_path / "fitted"), video_duration=6.0)["clips"]
+    assert [r["status"] for r in report] == ["fallback_original", "fallback_silence", "ok"]
+    assert report[0]["audio"] is None and report[0]["end"] == 1.0
+    assert report[1]["audio"] is None and report[1]["end"] == 2.0
+    assert report[2]["audio"]
