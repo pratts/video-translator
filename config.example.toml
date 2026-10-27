@@ -7,9 +7,13 @@
 source_language = ""
 target_language = "en"
 
-# Source separation (Demucs): htdemucs_ft = best quality, htdemucs = ~4x faster
+# Source separation (Demucs): htdemucs_ft = best quality, htdemucs = ~4x faster. demucs_shifts: how many
+# randomly shifted copies are separated and averaged (0 = none, fastest; more = slightly cleaner, slower).
+# seed makes the random shifts, and so the whole run, repeatable; change it to get a different separation
 demucs_model = "htdemucs_ft"
 demucs_device = ""
+demucs_shifts = 1
+seed = 0
 
 # Speech recognition: backend (whisperx, or mlx on Apple Silicon) and Whisper model
 asr_backend = "whisperx"

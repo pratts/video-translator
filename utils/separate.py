@@ -1,20 +1,29 @@
 import math
+import random
 from pathlib import Path
 
 import demucs.api
+import numpy as np
+import torch
 from tqdm import tqdm
 
 
 # === Separate speech from background using Demucs ===
 def separate_vocals(audio_path: str, vocals_output_path: str, background_output_path: str,
-                    model: str = "htdemucs_ft", device: str | None = None):
+                    model: str = "htdemucs_ft", device: str | None = None, shifts: int = 1, seed: int = 0):
     """
     Split the audio into vocals and background (everything that is not vocals).
     Uses the maintained Demucs (https://github.com/adefossez/demucs) Python API.
+    With shifts > 0, Demucs separates copies of the audio shifted by a random offset (up to 0.5 s) and
+    averages them. The offsets come from Python's global random, so it is seeded with seed: the same audio
+    and settings always give the same vocals, and with them the same transcript and segments.
     """
     print(f"🔍 Loading Demucs model '{model}'...")
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     progress = _Progress()
-    options = {"model": model, "callback": progress}
+    options = {"model": model, "callback": progress, "shifts": shifts}
     if device:
         options["device"] = device
     separator = demucs.api.Separator(**options)
